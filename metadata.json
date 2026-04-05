@@ -1,0 +1,7 @@
+{
+  "name": "SIGVIK",
+  "description": "Upphandlingsintelligens för Sveriges bostadsmarknad. Identifierar underhållsbehov hos BRF:er innan de blir synliga. / Procurement intelligence for the Swedish housing market. Identifies maintenance needs in housing cooperatives before they become visible.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
