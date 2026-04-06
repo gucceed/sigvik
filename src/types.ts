@@ -28,6 +28,16 @@ export interface BRF {
   feeTrajectory: 'Stable' | 'Rising 1-5%' | 'Rising 6-15%' | 'Rising 16%+' | 'Falling';
   energyClass: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G';
   maintenancePlanStatus: 'Aktuell' | 'Föråldrad' | 'Saknas' | 'Okänd';
+  history?: HistoryItem[];
+}
+
+export interface HistoryItem {
+  year: number;
+  goal: string;
+  outcome: string;
+  status: 'Uppfyllt' | 'Delvis' | 'Ej uppfyllt' | 'Okänt';
+  source: string;
+  confidence: 'Hög' | 'Medel' | 'Låg';
 }
 
 export type Language = 'sv' | 'en';
@@ -109,7 +119,41 @@ export const TRANSLATIONS = {
     avg_financial_score: 'Genomsnittlig finansiell hälsa',
     active_signals: 'Aktiva signaler',
     malmo_stats: 'Malmö Statistik',
-    top_districts: 'Toppstadsdelar'
+    top_districts: 'Toppstadsdelar',
+    // Phase 2 Filters
+    filter_municipality: 'Kommun / Stadsdel',
+    filter_apartments: 'Antal lägenheter',
+    filter_built_year: 'Byggnadsår',
+    filter_project_type: 'Projekttyp',
+    filter_fee_trajectory: 'Avgiftsutveckling',
+    filter_debt: 'Skuld per lägenhet',
+    filter_energy_class: 'Energiklass',
+    filter_maintenance_status: 'Underhållsplansstatus',
+    // Sorting
+    sort_alphabetical: 'Alfabetiskt (A–Ö)',
+    sort_newest: 'Nyast data först',
+    sort_debt_low: 'Lägst skuld per lägenhet',
+    sort_debt_high: 'Högst skuld per lägenhet',
+    sort_year_oldest: 'Byggnadsår (äldst först)',
+    sort_year_newest: 'Byggnadsår (nyast först)',
+    // History
+    history_title: 'Föreningens historik',
+    history_year: 'År',
+    history_goal: 'Uttalat mål',
+    history_outcome: 'Dokumenterat utfall',
+    history_status: 'Status',
+    history_source: 'Källa',
+    history_confidence: 'Konfidens',
+    history_pattern: 'Mönster att notera',
+    history_questions: 'Öppna frågor för köparen',
+    history_data_quality: 'Datakvalitet',
+    history_disclaimer: 'Informationen baseras på offentliga Bolagsverket-handlingar. Kontrollera alltid uppgifter med mäklaren och begär senaste årsredovisningen direkt från föreningen.',
+    phase2_notice: 'Den funktionen lanseras i fas 2 när vi har täckning i Stockholm och Göteborg. I prototypen visas Malmö.',
+    insufficient_comparable_data: 'Otillräckligt jämförelseunderlag för denna kategori',
+    data_under_review: 'Data under granskning',
+    verified_registry: 'Verifierad — publika register',
+    verified_community: 'Verifierad — community',
+    limited_data: 'Begränsad data'
   },
   en: {
     app_name: 'SIGVIK',
@@ -187,7 +231,41 @@ export const TRANSLATIONS = {
     avg_financial_score: 'Average Financial Health',
     active_signals: 'Active Signals',
     malmo_stats: 'Malmö Statistics',
-    top_districts: 'Top Districts'
+    top_districts: 'Top Districts',
+    // Phase 2 Filters
+    filter_municipality: 'Municipality / District',
+    filter_apartments: 'Number of apartments',
+    filter_built_year: 'Built Year',
+    filter_project_type: 'Project Type',
+    filter_fee_trajectory: 'Fee Trajectory',
+    filter_debt: 'Debt per apartment',
+    filter_energy_class: 'Energy Class',
+    filter_maintenance_status: 'Maintenance Plan Status',
+    // Sorting
+    sort_alphabetical: 'Alphabetical (A–Z)',
+    sort_newest: 'Newest data first',
+    sort_debt_low: 'Lowest debt per apartment',
+    sort_debt_high: 'Highest debt per apartment',
+    sort_year_oldest: 'Built year (oldest first)',
+    sort_year_newest: 'Built year (newest first)',
+    // History
+    history_title: 'Association History',
+    history_year: 'Year',
+    history_goal: 'Stated Goal',
+    history_outcome: 'Documented Outcome',
+    history_status: 'Status',
+    history_source: 'Source',
+    history_confidence: 'Confidence',
+    history_pattern: 'Patterns to note',
+    history_questions: 'Open questions for the buyer',
+    history_data_quality: 'Data Quality',
+    history_disclaimer: 'Information is based on public Bolagsverket documents. Always check information with the broker and request the latest annual report directly from the association.',
+    phase2_notice: 'This function will be launched in phase 2 when we have coverage in Stockholm and Gothenburg. The prototype shows Malmö.',
+    insufficient_comparable_data: 'Insufficient comparable data for this category',
+    data_under_review: 'Data under review',
+    verified_registry: 'Verified — public registers',
+    verified_community: 'Verified — community',
+    limited_data: 'Limited data'
   }
 };
 
@@ -212,6 +290,11 @@ export const MOCK_BRFS: BRF[] = [
     feeTrajectory: 'Rising 16%+',
     energyClass: 'F',
     maintenancePlanStatus: 'Föråldrad',
+    history: [
+      { year: 2023, goal: 'Påbörja stambyte under Q4.', outcome: 'Projektet pausat pga finansieringsfrågor.', status: 'Ej uppfyllt', source: 'Årsredovisning 2023', confidence: 'Hög' },
+      { year: 2022, goal: 'Utreda rörsystemets status.', outcome: 'Teknisk besiktning genomförd, läckage konstaterade.', status: 'Uppfyllt', source: 'Årsredovisning 2022', confidence: 'Hög' },
+      { year: 2021, goal: 'Minska energiförbrukningen med 10%.', outcome: 'Energiförbrukningen stabil, inga åtgärder vidtagna.', status: 'Ej uppfyllt', source: 'Energideklaration', confidence: 'Hög' }
+    ],
     signals: [
       { type: 'Avgiftshöjning', description: 'Planerad höjning 18%', weight: 'Primary', date: '2024-03-15', confidence: 0.95 },
       { type: 'Bygglov', description: 'Ställningsbygge ansökt', weight: 'Secondary', date: '2024-03-10', confidence: 0.90 },
@@ -240,6 +323,10 @@ export const MOCK_BRFS: BRF[] = [
     feeTrajectory: 'Rising 6-15%',
     energyClass: 'E',
     maintenancePlanStatus: 'Saknas',
+    history: [
+      { year: 2023, goal: 'Renovera fasaden mot gatan.', outcome: 'Bygglov ansökt, inväntar beslut.', status: 'Okänt', source: 'Årsredovisning 2023', confidence: 'Hög' },
+      { year: 2022, goal: 'Måla om fönsterkarmar.', outcome: 'Genomfört under sommaren.', status: 'Uppfyllt', source: 'Årsredovisning 2022', confidence: 'Hög' }
+    ],
     signals: [
       { type: 'Bygglov', description: 'Fasadändring beviljad', weight: 'Primary', date: '2024-03-20', confidence: 0.95 },
       { type: 'Årsredovisning', description: 'Beslut om fasadputs', weight: 'Primary', date: '2024-02-10', confidence: 0.88 },

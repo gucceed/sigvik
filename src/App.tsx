@@ -156,13 +156,87 @@ const PublicView = ({ lang }: { lang: Language }) => {
   const [selectedBrfId, setSelectedBrfId] = useState<string | null>(null);
   const [showF3Modal, setShowF3Modal] = useState<'add' | 'flag' | null>(null);
   const [f3Status, setF3Status] = useState<'idle' | 'submitting' | 'success'>('idle');
+  const [disclaimerExpanded, setDisclaimerExpanded] = useState(false);
+  const [persona, setPersona] = useState<'buyer' | 'board' | 'contractor' | null>(null);
+  const [showPersonaPrompt, setShowPersonaPrompt] = useState(true);
+  const [scrollCount, setScrollCount] = useState(0);
+  const [showNavGuidance, setShowNavGuidance] = useState<string | null>(null);
 
-  const filtered = MOCK_BRFS.filter(b => 
-    b.name.toLowerCase().includes(search.toLowerCase()) || 
-    b.address.toLowerCase().includes(search.toLowerCase())
-  );
+  // Navigation Guidance Logic
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrollCount(prev => prev + 1);
+      if (scrollCount > 500 && !selectedBrfId) {
+        setShowNavGuidance(lang === 'sv' 
+          ? 'Hittar du inte föreningen du söker? Prova att söka på gatunamnet istället för föreningens namn — många föreningar är lättare att hitta den vägen.'
+          : 'Can\'t find the association you\'re looking for? Try searching for the street name instead of the association name — many associations are easier to find that way.');
+      }
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [scrollCount, selectedBrfId, lang]);
+  
+  // Phase 2 Filters
+  const [filterMunicipality, setFilterMunicipality] = useState<string[]>([]);
+  const [filterApartments, setFilterApartments] = useState<[number, number]>([32, 180]);
+  const [filterBuiltYear, setFilterBuiltYear] = useState<string[]>([]);
+  const [filterProjectType, setFilterProjectType] = useState<string[]>([]);
+  const [filterFeeTrajectory, setFilterFeeTrajectory] = useState<string[]>([]);
+  const [filterDebt, setFilterDebt] = useState<[number, number]>([45000, 185000]);
+  const [filterEnergyClass, setFilterEnergyClass] = useState<string[]>([]);
+  const [filterMaintenanceStatus, setFilterMaintenanceStatus] = useState<string[]>([]);
+  
+  const [sortBy, setSortBy] = useState<'name' | 'newest' | 'debt_low' | 'debt_high' | 'year_oldest' | 'year_newest'>('name');
+
+  const filtered = useMemo(() => {
+    return MOCK_BRFS.filter(b => {
+      const matchesSearch = b.name.toLowerCase().includes(search.toLowerCase()) || 
+                           b.address.toLowerCase().includes(search.toLowerCase());
+      
+      const matchesMunicipality = filterMunicipality.length === 0 || filterMunicipality.includes(b.district);
+      const matchesApartments = b.apartments >= filterApartments[0] && b.apartments <= filterApartments[1];
+      
+      let matchesYear = true;
+      if (filterBuiltYear.length > 0) {
+        matchesYear = filterBuiltYear.some(range => {
+          if (range === 'pre-1960') return b.builtYear < 1960;
+          if (range === '1960-1985') return b.builtYear >= 1960 && b.builtYear <= 1985;
+          if (range === '1986-2000') return b.builtYear >= 1986 && b.builtYear <= 2000;
+          if (range === '2001+') return b.builtYear >= 2001;
+          return false;
+        });
+      }
+      
+      const matchesProject = filterProjectType.length === 0 || (b.predictedProject && filterProjectType.includes(b.predictedProject));
+      const matchesFee = filterFeeTrajectory.length === 0 || filterFeeTrajectory.includes(b.feeTrajectory);
+      const matchesDebt = b.debtPerUnit >= filterDebt[0] && b.debtPerUnit <= filterDebt[1];
+      const matchesEnergy = filterEnergyClass.length === 0 || filterEnergyClass.includes(b.energyClass);
+      const matchesMaintenance = filterMaintenanceStatus.length === 0 || filterMaintenanceStatus.includes(b.maintenancePlanStatus);
+
+      return matchesSearch && matchesMunicipality && matchesApartments && matchesYear && 
+             matchesProject && matchesFee && matchesDebt && matchesEnergy && matchesMaintenance;
+    }).sort((a, b) => {
+      if (sortBy === 'name') return a.name.localeCompare(b.name);
+      if (sortBy === 'newest') return 0; // Mock newest
+      if (sortBy === 'debt_low') return a.debtPerUnit - b.debtPerUnit;
+      if (sortBy === 'debt_high') return b.debtPerUnit - a.debtPerUnit;
+      if (sortBy === 'year_oldest') return a.builtYear - b.builtYear;
+      if (sortBy === 'year_newest') return b.builtYear - a.builtYear;
+      return 0;
+    });
+  }, [search, filterMunicipality, filterApartments, filterBuiltYear, filterProjectType, filterFeeTrajectory, filterDebt, filterEnergyClass, filterMaintenanceStatus, sortBy]);
 
   const selectedBrf = MOCK_BRFS.find(b => b.id === selectedBrfId);
+
+  useEffect(() => {
+    if (filtered.length > 50) {
+      setShowNavGuidance(lang === 'sv'
+        ? 'Du kan lägga till stadsdelen för att filtrera — till exempel "Pilen Limhamn" istället för bara "Pilen".'
+        : 'You can add the district to filter — for example "Pilen Limhamn" instead of just "Pilen".');
+    } else {
+      setShowNavGuidance(null);
+    }
+  }, [filtered.length, lang]);
 
   const handleF3Submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -178,18 +252,80 @@ const PublicView = ({ lang }: { lang: Language }) => {
 
   return (
     <div className="max-w-7xl mx-auto p-8">
-      {/* Mandatory Disclaimer */}
-      <div className="mb-8 p-4 bg-sigvik-ink text-sigvik-bg text-[10px] leading-relaxed uppercase tracking-wider border-l-4 border-sigvik-line">
-        <div className="flex gap-3">
-          <Info size={16} className="shrink-0" />
-          <p>{t.mandatory_disclaimer}</p>
+      {/* Persona Onboarding */}
+      <AnimatePresence>
+        {showPersonaPrompt && !persona && (
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed bottom-8 right-8 z-50 w-80 bg-sigvik-ink text-sigvik-bg p-6 shadow-2xl border border-sigvik-line/20"
+          >
+            <p className="text-sm mb-4 leading-relaxed">
+              {lang === 'sv' 
+                ? 'Letar du efter information om en specifik förening du funderar på att köpa in i, eller vill du förstå hur en förening du redan tillhör sköts?' 
+                : 'Are you looking for information about a specific association you are considering buying into, or do you want to understand how an association you already belong to is managed?'}
+            </p>
+            <div className="space-y-2">
+              <button 
+                onClick={() => { setPersona('buyer'); setShowPersonaPrompt(false); }}
+                className="w-full text-left p-2 text-xs border border-sigvik-bg/20 hover:bg-sigvik-bg hover:text-sigvik-ink transition-colors"
+              >
+                {lang === 'sv' ? 'Jag är en prospektiv köpare' : 'I am a prospective buyer'}
+              </button>
+              <button 
+                onClick={() => { setPersona('board'); setShowPersonaPrompt(false); }}
+                className="w-full text-left p-2 text-xs border border-sigvik-bg/20 hover:bg-sigvik-bg hover:text-sigvik-ink transition-colors"
+              >
+                {lang === 'sv' ? 'Jag är styrelsemedlem / boende' : 'I am a board member / resident'}
+              </button>
+              <button 
+                onClick={() => { setPersona('contractor'); setShowPersonaPrompt(false); }}
+                className="w-full text-left p-2 text-xs border border-sigvik-bg/20 hover:bg-sigvik-bg hover:text-sigvik-ink transition-colors"
+              >
+                {lang === 'sv' ? 'Jag är förvaltare / entreprenör' : 'I am a manager / contractor'}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Mandatory Disclaimer - Collapsed by default */}
+      <div className="mb-8 p-4 bg-sigvik-ink text-sigvik-bg text-[10px] leading-relaxed uppercase tracking-wider border-l-4 border-sigvik-line transition-all duration-300">
+        <div className="flex justify-between items-start gap-3">
+          <div className="flex gap-3">
+            <Info size={16} className="shrink-0" />
+            {disclaimerExpanded ? (
+              <p>{t.mandatory_disclaimer}</p>
+            ) : (
+              <p>{lang === 'sv' ? 'Informationen baseras på offentliga källor. Läs mer.' : 'Information is based on public sources. Read more.'}</p>
+            )}
+          </div>
+          <button 
+            onClick={() => setDisclaimerExpanded(!disclaimerExpanded)}
+            className="shrink-0 font-bold hover:underline"
+          >
+            {disclaimerExpanded ? '[ - ]' : '[ + ]'}
+          </button>
         </div>
       </div>
       
       <div className="flex flex-col md:flex-row justify-between items-end mb-12 gap-8">
-        <div>
-          <h2 className="font-serif italic text-5xl mb-4 tracking-tight">{t.find_report}</h2>
-          <p className="max-w-2xl text-lg opacity-70 leading-relaxed">{t.tagline}</p>
+        <div className="flex-1">
+          <h2 className="font-serif italic text-5xl mb-4 tracking-tight">
+            {persona === 'buyer' 
+              ? (lang === 'sv' ? 'Hitta din framtida förening' : 'Find your future association')
+              : persona === 'board'
+              ? (lang === 'sv' ? 'Förstå din förenings data' : 'Understand your association\'s data')
+              : (lang === 'sv' ? 'Marknadsöversikt Malmö' : 'Market Overview Malmö')}
+          </h2>
+          <p className="max-w-2xl text-lg opacity-70 leading-relaxed">
+            {persona === 'buyer'
+              ? (lang === 'sv' ? 'Välkommen. Du kan söka på föreningens namn i sökfältet — till exempel "BRF Pilen". Sedan visar jag dig föreningens ekonomi, underhållshistorik och vad du bör fråga din mäklare om.' : 'Welcome. You can search for the association\'s name in the search field — for example "BRF Pilen". Then I will show you the association\'s finances, maintenance history, and what you should ask your broker.')
+              : persona === 'board'
+              ? (lang === 'sv' ? 'Du kan söka på din förenings namn och se vilken information vi har om er — ekonomi, underhållsplan, energistatus och vad som finns i offentliga register. Om något är fel eller saknas kan du flagga det direkt.' : 'You can search for your association\'s name and see what information we have about you — finances, maintenance plan, energy status, and what is in public registries. If something is wrong or missing, you can flag it directly.')
+              : (lang === 'sv' ? 'Realtidsdata från Malmös bostadsrättsföreningar. Analysera signaler, intentionsscore och marknadstrender.' : 'Real-time data from Malmö\'s housing associations. Analyze signals, intent scores, and market trends.')}
+          </p>
         </div>
         <div className="hidden lg:flex gap-12 border-l border-sigvik-line/10 pl-12 py-2">
           <div>
@@ -203,19 +339,172 @@ const PublicView = ({ lang }: { lang: Language }) => {
         </div>
       </div>
 
-      <div className="relative mb-8">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 opacity-30" size={20} />
-        <input 
-          type="text" 
-          placeholder={t.search_placeholder}
-          className="w-full bg-white border border-sigvik-line/20 p-4 pl-12 font-mono text-lg focus:outline-none focus:border-sigvik-ink"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+      <div className="relative mb-8 flex gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 opacity-30" size={20} />
+          <input 
+            type="text" 
+            placeholder={t.search_placeholder}
+            className="w-full bg-white border border-sigvik-line/20 p-4 pl-12 font-mono text-lg focus:outline-none focus:border-sigvik-ink"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {(search.toLowerCase().includes('stockholm') || search.toLowerCase().includes('göteborg')) && (
+            <div className="absolute top-full left-0 right-0 mt-2 p-3 bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-bold uppercase tracking-wider z-10">
+              {t.phase2_notice}
+            </div>
+          )}
+          {showNavGuidance && (
+            <div className="absolute top-full left-0 right-0 mt-2 p-3 bg-sigvik-ink text-sigvik-bg text-[10px] font-bold uppercase tracking-wider z-10 flex justify-between items-center">
+              <span>{showNavGuidance}</span>
+              <button onClick={() => setShowNavGuidance(null)} className="opacity-50 hover:opacity-100">✕</button>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-4 bg-white border border-sigvik-line/20 px-4">
+          <span className="text-[10px] font-bold uppercase opacity-40">Sort:</span>
+          <select 
+            className="bg-transparent text-[10px] font-bold uppercase outline-none"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as any)}
+          >
+            <option value="name">{t.sort_alphabetical}</option>
+            <option value="newest">{t.sort_newest}</option>
+            <option value="debt_low">{t.sort_debt_low}</option>
+            <option value="debt_high">{t.sort_debt_high}</option>
+            <option value="year_oldest">{t.sort_year_oldest}</option>
+            <option value="year_newest">{t.sort_year_newest}</option>
+          </select>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div className="md:col-span-1 space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div className="md:col-span-1 space-y-8">
+          {/* Filters Section */}
+          <div className="bg-white border border-sigvik-line p-6 space-y-6">
+            <h3 className="col-header border-b border-sigvik-line/10 pb-2 mb-4">Filter</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_municipality}</label>
+                <div className="flex flex-wrap gap-2">
+                  {['Husie', 'Limhamn', 'Centrum', 'Västra Hamnen', 'Hyllie', 'Segevång', 'Oxie', 'Rosengård', 'Fosie', 'Kirseberg'].map(d => (
+                    <button 
+                      key={d}
+                      onClick={() => setFilterMunicipality(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])}
+                      className={cn("px-2 py-1 text-[10px] border transition-all", filterMunicipality.includes(d) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_apartments} (32–180)</label>
+                <input 
+                  type="range" min="32" max="180" 
+                  value={filterApartments[1]} 
+                  onChange={(e) => setFilterApartments([32, parseInt(e.target.value)])}
+                  className="w-full accent-sigvik-ink"
+                />
+                <div className="flex justify-between text-[10px] font-mono opacity-40 mt-1">
+                  <span>32</span>
+                  <span>{filterApartments[1]}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_built_year}</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {['pre-1960', '1960-1985', '1986-2000', '2001+'].map(range => (
+                    <button 
+                      key={range}
+                      onClick={() => setFilterBuiltYear(prev => prev.includes(range) ? prev.filter(x => x !== range) : [...prev, range])}
+                      className={cn("px-2 py-1 text-[10px] border transition-all", filterBuiltYear.includes(range) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
+                    >
+                      {range}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_project_type}</label>
+                <div className="flex flex-wrap gap-2">
+                  {['Stambyte', 'Fasad', 'Fönster', 'Tak', 'Energi', 'Hiss'].map(p => (
+                    <button 
+                      key={p}
+                      onClick={() => setFilterProjectType(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])}
+                      className={cn("px-2 py-1 text-[10px] border transition-all", filterProjectType.includes(p) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_fee_trajectory}</label>
+                <div className="flex flex-wrap gap-2">
+                  {['Stable', 'Rising 1-5%', 'Rising 6-15%', 'Rising 16%+', 'Falling'].map(f => (
+                    <button 
+                      key={f}
+                      onClick={() => setFilterFeeTrajectory(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f])}
+                      className={cn("px-2 py-1 text-[10px] border transition-all", filterFeeTrajectory.includes(f) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_debt} (45k–185k)</label>
+                <input 
+                  type="range" min="45000" max="185000" step="5000"
+                  value={filterDebt[1]} 
+                  onChange={(e) => setFilterDebt([45000, parseInt(e.target.value)])}
+                  className="w-full accent-sigvik-ink"
+                />
+                <div className="flex justify-between text-[10px] font-mono opacity-40 mt-1">
+                  <span>45k</span>
+                  <span>{Math.round(filterDebt[1]/1000)}k</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_maintenance_status}</label>
+                <div className="flex flex-wrap gap-2">
+                  {['Aktuell', 'Föråldrad', 'Saknas', 'Okänd'].map(s => (
+                    <button 
+                      key={s}
+                      onClick={() => setFilterMaintenanceStatus(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])}
+                      className={cn("px-2 py-1 text-[10px] border transition-all", filterMaintenanceStatus.includes(s) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_energy_class}</label>
+                <div className="flex flex-wrap gap-2">
+                  {['A', 'B', 'C', 'D', 'E', 'F', 'G'].map(c => (
+                    <button 
+                      key={c}
+                      onClick={() => setFilterEnergyClass(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c])}
+                      className={cn("w-6 h-6 flex items-center justify-center text-[10px] border transition-all", filterEnergyClass.includes(c) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div>
             <span className="col-header block mb-2">{t.search_results}</span>
             <div className="space-y-2">
@@ -225,8 +514,21 @@ const PublicView = ({ lang }: { lang: Language }) => {
                   onClick={() => setSelectedBrfId(brf.id)}
                   className={cn("p-4 border border-sigvik-line/10 cursor-pointer transition-all", selectedBrfId === brf.id ? "bg-sigvik-ink text-sigvik-bg" : "bg-white hover:bg-sigvik-ink/5")}
                 >
-                  <div className="font-bold">{brf.name}</div>
-                  <div className="text-xs opacity-60 font-mono">{brf.address}, {brf.district}</div>
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <div className="font-bold">{brf.name}</div>
+                        <span className="px-1 py-0.5 bg-sigvik-bg text-[6px] font-bold uppercase border border-sigvik-line/10">{t.verified_registry}</span>
+                      </div>
+                      <div className="text-[10px] opacity-60 font-mono uppercase mt-1">
+                        {brf.district} • {brf.builtYear} • {brf.apartments} lgh
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mt-2 text-[9px] font-mono opacity-40">
+                        <span>{brf.debtPerUnit.toLocaleString()} kr/lgh</span>
+                        <span>{brf.feePerKvm} kr/kvm</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -250,7 +552,7 @@ const PublicView = ({ lang }: { lang: Language }) => {
           </div>
         </div>
 
-        <div className="md:col-span-2">
+        <div className="md:col-span-3">
           <AnimatePresence mode="wait">
             {selectedBrf ? (
               <motion.div 
@@ -264,6 +566,10 @@ const PublicView = ({ lang }: { lang: Language }) => {
                   <div>
                     <h3 className="text-3xl font-bold uppercase tracking-tighter">{selectedBrf.name}</h3>
                     <p className="font-mono text-sm opacity-50">{selectedBrf.address}, {selectedBrf.district}</p>
+                    <div className="flex gap-2 mt-2">
+                      <span className="px-2 py-0.5 bg-sigvik-bg text-[8px] font-bold uppercase border border-sigvik-line/10">{t.verified_registry}</span>
+                      {selectedBrf.maintenancePlanStatus === 'Aktuell' && <span className="px-2 py-0.5 bg-green-50 text-green-700 text-[8px] font-bold uppercase border border-green-200">Verifierad — community</span>}
+                    </div>
                   </div>
                   <div className="flex gap-8">
                     <ScoreBadge label={t.financial_health} score={selectedBrf.financialScore} />
@@ -271,7 +577,27 @@ const PublicView = ({ lang }: { lang: Language }) => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-8 mb-8">
+                {/* Board Member Callout */}
+                {persona === 'board' && (
+                  <div className="mb-8 p-4 bg-sigvik-accent/5 border border-sigvik-accent/20">
+                    <p className="text-xs font-bold uppercase text-sigvik-accent mb-2">
+                      {lang === 'sv' ? 'Stämmer inte datan?' : 'Is the data incorrect?'}
+                    </p>
+                    <p className="text-sm opacity-80 mb-3">
+                      {lang === 'sv' 
+                        ? 'Om du ser information som är felaktig eller saknas kan du flagga det direkt. Det är det snabbaste sättet att säkerställa att er förening presenteras korrekt.' 
+                        : 'If you see information that is incorrect or missing, you can flag it directly. This is the fastest way to ensure your association is presented correctly.'}
+                    </p>
+                    <button 
+                      onClick={() => setShowF3Modal('flag')}
+                      className="text-[10px] font-bold uppercase tracking-widest underline hover:no-underline"
+                    >
+                      {t.flag_error}
+                    </button>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-8 mb-12">
                   <div className="p-6 bg-sigvik-bg/30 border border-sigvik-line/5">
                     <h4 className="col-header mb-4">{t.building_info}</h4>
                     <div className="space-y-3">
@@ -289,7 +615,41 @@ const PublicView = ({ lang }: { lang: Language }) => {
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="opacity-50">{t.energy_class}</span>
-                        <span className="font-mono">{selectedBrf.energyClass}</span>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="font-mono">{selectedBrf.energyClass}</span>
+                          {persona === 'buyer' && (
+                            <span className="text-[10px] opacity-40 italic max-w-[150px] text-right">
+                              {['E', 'F', 'G'].includes(selectedBrf.energyClass)
+                                ? (lang === 'sv' ? 'Kan behöva investera i energieffektivisering före 2030.' : 'May need to invest in energy efficiency before 2030.')
+                                : (lang === 'sv' ? 'God energiprestanda.' : 'Good energy performance.')}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="opacity-50">{t.debt_per_unit}</span>
+                        <div className="flex flex-col items-end gap-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono">{selectedBrf.debtPerUnit.toLocaleString()} kr</span>
+                            <span className="px-1 py-0.5 bg-sigvik-ink/5 text-[6px] font-bold uppercase border border-sigvik-line/10" title="NLP Confidence: High">Hög</span>
+                          </div>
+                          <span className="text-[10px] opacity-40 italic">
+                            {selectedBrf.debtPerUnit < 100000 
+                              ? (lang === 'sv' ? 'Normal skuldnivå för denna storlek.' : 'Normal debt level for this size.')
+                              : (lang === 'sv' ? 'Något högre skuldnivå än genomsnittet.' : 'Slightly higher debt level than average.')}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="opacity-50">{t.trajectory}</span>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="font-mono">{selectedBrf.feeTrajectory}</span>
+                          <span className="text-[10px] opacity-40 italic">
+                            {lang === 'sv' 
+                              ? `Avgiften har varit ${selectedBrf.feeTrajectory.toLowerCase()} de senaste två åren.` 
+                              : `The fee has been ${selectedBrf.feeTrajectory.toLowerCase()} over the last two years.`}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -312,10 +672,73 @@ const PublicView = ({ lang }: { lang: Language }) => {
                       </ResponsiveContainer>
                     </div>
                     <p className="mt-4 text-[10px] font-mono opacity-40 uppercase">
-                      {t.sample_size.replace('{count}', '142')}
+                      {142 < 5 ? t.insufficient_comparable_data : t.sample_size.replace('{count}', '142')}
                     </p>
                   </div>
                 </div>
+
+                {/* Association History Section (Type 5) */}
+                {selectedBrf.history && (
+                  <div className="mb-12">
+                    <div className="flex justify-between items-end mb-6">
+                      <h4 className="col-header">{t.history_title}</h4>
+                      <div className="text-[10px] font-mono opacity-40 uppercase">
+                        {t.history_data_quality}: <span className="text-sigvik-ink font-bold">Hög (iXBRL)</span>
+                      </div>
+                    </div>
+                    <div className="border border-sigvik-line/10 overflow-hidden">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-sigvik-bg/50 border-b border-sigvik-line/10">
+                          <tr>
+                            <th className="p-3 font-bold uppercase tracking-wider">{t.history_year}</th>
+                            <th className="p-3 font-bold uppercase tracking-wider">{t.history_goal}</th>
+                            <th className="p-3 font-bold uppercase tracking-wider">{t.history_outcome}</th>
+                            <th className="p-3 font-bold uppercase tracking-wider">{t.history_status}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-sigvik-line/5">
+                          {selectedBrf.history.map((item, i) => (
+                            <tr key={i} className="hover:bg-sigvik-bg/20 transition-colors">
+                              <td className="p-3 font-mono">{item.year}</td>
+                              <td className="p-3 opacity-80 italic">"{item.goal}"</td>
+                              <td className="p-3 opacity-80">{item.outcome}</td>
+                              <td className="p-3">
+                                <span className={cn(
+                                  "px-2 py-0.5 text-[8px] font-bold uppercase border",
+                                  item.status === 'Uppfyllt' ? "bg-green-50 text-green-700 border-green-200" :
+                                  item.status === 'Ej uppfyllt' ? "bg-red-50 text-red-700 border-red-200" :
+                                  "bg-amber-50 text-amber-700 border-amber-200"
+                                )}>
+                                  {item.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="mt-6 grid grid-cols-2 gap-8">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.history_pattern}</span>
+                        <p className="text-sm italic opacity-70 leading-relaxed">
+                          {lang === 'sv' 
+                            ? 'Föreningen uppvisar ett mönster av att prioritera akuta läckage framför planerade energibesparingsmål. Underhållsplanen tycks följas reaktivt.'
+                            : 'The association shows a pattern of prioritizing acute leaks over planned energy saving goals. The maintenance plan seems to be followed reactively.'}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.history_questions}</span>
+                        <ul className="text-sm space-y-2 opacity-70 list-disc pl-4">
+                          <li>{lang === 'sv' ? 'Finns en aktuell underhållsplan?' : 'Is there a current maintenance plan?'}</li>
+                          <li>{lang === 'sv' ? 'Vad är status för stambytet som planerades 2023?' : 'What is the status of the pipe replacement planned for 2023?'}</li>
+                        </ul>
+                      </div>
+                    </div>
+                    <p className="mt-8 text-[9px] opacity-40 leading-relaxed italic border-t border-sigvik-line/10 pt-4">
+                      {t.history_disclaimer}
+                    </p>
+                  </div>
+                )}
 
                 <div className="border-t border-sigvik-line/10 pt-8">
                   <h4 className="col-header mb-4">{t.recommended_actions}</h4>
@@ -326,52 +749,77 @@ const PublicView = ({ lang }: { lang: Language }) => {
                       </div>
                       <div>
                         <p className="font-bold text-sm">
-                          {lang === 'sv' ? 'Se över fasadunderhåll' : 'Review facade maintenance'}
+                          {lang === 'sv' ? 'Begär förtydligande om underhållsplan' : 'Request clarification on maintenance plan'}
                         </p>
                         <p className="text-xs opacity-60">
                           {lang === 'sv' 
-                            ? 'Baserat på byggår och liknande fastigheter i området bör en teknisk besiktning genomföras inom 12 månader.' 
-                            : 'Based on construction year and similar properties in the area, a technical inspection should be conducted within 12 months.'}
+                            ? 'Föreningens underhållsplan är markerad som föråldrad. Fråga mäklaren om styrelsen har beslutat om en ny teknisk besiktning.' 
+                            : 'The association\'s maintenance plan is marked as outdated. Ask the broker if the board has decided on a new technical inspection.'}
                         </p>
                       </div>
                     </div>
+                  </div>
+                  
+                  {/* Persona A - Questions for Broker */}
+                  <div className="mt-8 pt-8 border-t border-sigvik-line/5">
+                    <h5 className="text-[10px] font-bold uppercase opacity-40 mb-4">{lang === 'sv' ? 'Tre frågor att ställa till mäklaren' : 'Three questions to ask the broker'}</h5>
+                    <ul className="space-y-3">
+                      {[
+                        lang === 'sv' ? 'Finns det en aktuell underhållsplan och när uppdaterades den senast?' : 'Is there a current maintenance plan and when was it last updated?',
+                        lang === 'sv' ? `Hur ser planen ut för att hantera energiklass ${selectedBrf.energyClass} fram till 2030?` : `What is the plan for handling energy class ${selectedBrf.energyClass} until 2030?`,
+                        lang === 'sv' ? 'Finns det några beslutade avgiftshöjningar som inte syns i nuvarande månadsavgift?' : 'Are there any decided fee increases that are not reflected in the current monthly fee?'
+                      ].map((q, i) => (
+                        <li key={i} className="flex gap-3 items-start text-sm opacity-70 italic">
+                          <span className="font-mono text-sigvik-ink font-bold">{i+1}.</span>
+                          <span>{q}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
               </motion.div>
             ) : (
-              <div className="h-full grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="flex flex-col items-center justify-center border-2 border-dashed border-sigvik-line/10 p-12 text-center bg-white/50">
-                  <Building2 size={48} className="mb-4 opacity-20" />
-                  <p className="font-serif italic text-xl opacity-40">{t.select_brf}</p>
-                </div>
-                <div className="space-y-8">
-                  <div className="p-8 bg-white border border-sigvik-line/10">
-                    <h4 className="col-header mb-6">{t.market_overview}</h4>
-                    <div className="space-y-6">
-                      <div className="flex justify-between items-end border-b border-sigvik-line/5 pb-4">
-                        <span className="text-sm opacity-50">{t.total_brfs} (Malmö)</span>
-                        <span className="font-mono text-xl font-bold">2,104</span>
-                      </div>
-                      <div className="flex justify-between items-end border-b border-sigvik-line/5 pb-4">
-                        <span className="text-sm opacity-50">{t.avg_financial_score}</span>
-                        <span className="font-mono text-xl font-bold">71.2</span>
-                      </div>
-                      <div className="flex justify-between items-end border-b border-sigvik-line/5 pb-4">
-                        <span className="text-sm opacity-50">{t.active_signals} (24h)</span>
-                        <span className="font-mono text-xl font-bold text-sigvik-accent">142</span>
+              <div className="h-full space-y-8">
+                {persona !== 'buyer' ? (
+                  <>
+                    <div className="p-8 bg-white border border-sigvik-line shadow-sm">
+                      <h4 className="col-header mb-6">{t.market_overview}</h4>
+                      <div className="space-y-6">
+                        <div className="flex justify-between items-end border-b border-sigvik-line/5 pb-4">
+                          <span className="text-sm opacity-50">{t.total_brfs} (Malmö)</span>
+                          <span className="font-mono text-xl font-bold">2,104</span>
+                        </div>
+                        <div className="flex justify-between items-end border-b border-sigvik-line/5 pb-4">
+                          <span className="text-sm opacity-50">{t.avg_financial_score}</span>
+                          <span className="font-mono text-xl font-bold">71.2</span>
+                        </div>
+                        <div className="flex justify-between items-end border-b border-sigvik-line/5 pb-4">
+                          <span className="text-sm opacity-50">{lang === 'sv' ? 'Aktiva signaler (24h)' : 'Active signals (24h)'}</span>
+                          <span className="font-mono text-xl font-bold text-sigvik-accent">142</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="p-8 bg-sigvik-ink text-sigvik-bg">
-                    <h4 className="col-header text-sigvik-bg/50 mb-6">{t.top_districts}</h4>
-                    <div className="grid grid-cols-2 gap-4 font-mono text-xs">
-                      <div className="flex justify-between opacity-80"><span>Västra Hamnen</span><span>84.2</span></div>
-                      <div className="flex justify-between opacity-80"><span>Slottsstaden</span><span>79.1</span></div>
-                      <div className="flex justify-between opacity-80"><span>Limhamn</span><span>76.5</span></div>
-                      <div className="flex justify-between opacity-80"><span>Möllevången</span><span>62.8</span></div>
+                    <div className="p-8 bg-sigvik-ink text-sigvik-bg">
+                      <h4 className="col-header text-sigvik-bg/50 mb-6">{t.top_districts}</h4>
+                      <div className="grid grid-cols-2 gap-4 font-mono text-xs">
+                        <div className="flex justify-between opacity-80"><span>Västra Hamnen</span><span>84.2</span></div>
+                        <div className="flex justify-between opacity-80"><span>Slottsstaden</span><span>79.1</span></div>
+                        <div className="flex justify-between opacity-80"><span>Limhamn</span><span>76.5</span></div>
+                        <div className="flex justify-between opacity-80"><span>Möllevången</span><span>62.8</span></div>
+                      </div>
                     </div>
+                  </>
+                ) : (
+                  <div className="p-12 border-2 border-dashed border-sigvik-line/10 text-center bg-white/50 h-full flex flex-col items-center justify-center">
+                    <Building2 size={48} className="mb-4 opacity-10" />
+                    <p className="font-serif italic text-xl opacity-40 mb-4">{t.select_brf}</p>
+                    <p className="text-xs opacity-30 max-w-xs mx-auto leading-relaxed">
+                      {lang === 'sv' 
+                        ? 'Välj en förening i listan till vänster för att se detaljerad information om ekonomi, underhåll och historik.' 
+                        : 'Select an association from the list on the left to see detailed information about finances, maintenance, and history.'}
+                    </p>
                   </div>
-                </div>
+                )}
               </div>
             )}
           </AnimatePresence>
@@ -429,16 +877,20 @@ const PublicView = ({ lang }: { lang: Language }) => {
                       <input required type="text" placeholder="XXXXXX-XXXX" className="w-full bg-white border border-sigvik-line p-3 focus:outline-none focus:ring-1 focus:ring-sigvik-ink" />
                     </div>
                     <div>
-                      <label className="col-header block mb-2">{t.your_role}</label>
-                      <select className="w-full bg-white border border-sigvik-line p-3 focus:outline-none focus:ring-1 focus:ring-sigvik-ink">
-                        <option value="board">{t.role_board}</option>
-                        <option value="resident">{t.role_resident}</option>
-                        <option value="manager">{t.role_manager}</option>
-                        <option value="contractor">{t.role_contractor}</option>
-                        <option value="buyer">{t.role_buyer}</option>
-                        <option value="other">{t.role_other}</option>
-                      </select>
+                      <label className="col-header block mb-2">{t.municipality}</label>
+                      <input required type="text" className="w-full bg-white border border-sigvik-line p-3 focus:outline-none focus:ring-1 focus:ring-sigvik-ink" />
                     </div>
+                  </div>
+                  <div>
+                    <label className="col-header block mb-2">{t.your_role}</label>
+                    <select className="w-full bg-white border border-sigvik-line p-3 focus:outline-none focus:ring-1 focus:ring-sigvik-ink">
+                      <option value="board">{t.role_board}</option>
+                      <option value="resident">{t.role_resident}</option>
+                      <option value="manager">{t.role_manager}</option>
+                      <option value="contractor">{t.role_contractor}</option>
+                      <option value="buyer">{t.role_buyer}</option>
+                      <option value="other">{t.role_other}</option>
+                    </select>
                   </div>
                   {showF3Modal === 'flag' && (
                     <div>
@@ -705,10 +1157,15 @@ const ContractorDashboard = ({ lang }: { lang: Language }) => {
                           ) : (
                             <div className="space-y-6">
                               <div className="p-4 bg-sigvik-bg/30 border-l-2 border-sigvik-ink">
-                                <span className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.project_forecast}</span>
-                                <p className="font-serif italic text-lg leading-snug">{analyses[selectedBrf.id].project}</p>
+                                <span className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.analysis_title}</span>
+                                <p className="font-serif italic text-lg leading-snug tracking-tight">{analyses[selectedBrf.id].project}</p>
                               </div>
                               
+                              <div>
+                                <span className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.confidence_level}</span>
+                                <p className="text-xs font-mono opacity-80">{analyses[selectedBrf.id].confidence}</p>
+                              </div>
+
                               <div>
                                 <span className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.signal_pattern}</span>
                                 <p className="text-sm leading-relaxed opacity-80">{analyses[selectedBrf.id].pattern}</p>
@@ -717,6 +1174,11 @@ const ContractorDashboard = ({ lang }: { lang: Language }) => {
                               <div className="p-4 bg-sigvik-accent/5 border border-sigvik-accent/20">
                                 <span className="text-[10px] font-bold uppercase text-sigvik-accent block mb-2">{t.action_recommendation}</span>
                                 <p className="text-sm leading-relaxed font-medium">{analyses[selectedBrf.id].recommendation}</p>
+                              </div>
+
+                              <div>
+                                <span className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.uncertainty_factors}</span>
+                                <p className="text-xs opacity-60 leading-relaxed italic">{analyses[selectedBrf.id].uncertainties}</p>
                               </div>
                             </div>
                           )}
