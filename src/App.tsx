@@ -17,7 +17,9 @@ import {
   Plus,
   Check,
   X,
-  Zap
+  Zap,
+  Filter,
+  ChevronLeft
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -34,6 +36,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
 import { MOCK_BRFS, BRF, Signal, Language, TRANSLATIONS } from './types';
 
+import { List } from 'react-window';
+
 // --- Components ---
 
 const Header = ({ activeTab, setActiveTab, lang, setLang, setShowInfo }: { 
@@ -45,12 +49,12 @@ const Header = ({ activeTab, setActiveTab, lang, setLang, setShowInfo }: {
 }) => {
   const t = TRANSLATIONS[lang];
   return (
-    <header className="border-b border-sigvik-line p-6 flex justify-between items-center bg-white/50 backdrop-blur-md sticky top-0 z-50">
+    <header className="border-b border-sigvik-line p-4 md:p-6 flex justify-between items-center bg-white/50 backdrop-blur-md sticky top-0 z-50">
       <div className="flex items-center gap-3">
         <div className="w-8 h-8 bg-sigvik-ink flex items-center justify-center text-sigvik-bg font-bold text-xl">S</div>
-        <h1 className="text-2xl font-bold tracking-tighter uppercase">{t.app_name}</h1>
+        <h1 className="text-xl md:text-2xl font-bold tracking-tighter uppercase">{t.app_name}</h1>
       </div>
-      <nav className="flex gap-8 items-center">
+      <nav className="hidden md:flex gap-8 items-center">
         <button 
           onClick={() => setActiveTab('public')}
           className={cn("text-xs uppercase tracking-widest font-semibold transition-opacity", activeTab === 'public' ? "opacity-100 border-b-2 border-sigvik-ink" : "opacity-40 hover:opacity-70")}
@@ -78,12 +82,56 @@ const Header = ({ activeTab, setActiveTab, lang, setLang, setShowInfo }: {
           <Globe size={12} /> {lang === 'sv' ? 'EN' : 'SV'}
         </button>
       </nav>
+      <div className="flex md:hidden items-center gap-4">
+        <button 
+          onClick={() => setLang(lang === 'sv' ? 'en' : 'sv')}
+          className="flex items-center gap-2 text-[10px] font-bold uppercase opacity-60"
+        >
+          <Globe size={12} /> {lang === 'sv' ? 'EN' : 'SV'}
+        </button>
+      </div>
       <div className="hidden md:flex items-center gap-4 text-[10px] font-mono opacity-50 uppercase">
         <span>{t.version} 1.0</span>
         <span>•</span>
         <span>{t.location}</span>
       </div>
     </header>
+  );
+};
+
+const BottomNav = ({ activeTab, setActiveTab, setShowInfo, lang }: {
+  activeTab: string,
+  setActiveTab: (t: string) => void,
+  setShowInfo: (s: boolean) => void,
+  lang: Language
+}) => {
+  const t = TRANSLATIONS[lang];
+  return (
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 h-14 bg-white border-t border-gray-100 z-[60] flex items-center justify-around pb-safe pb-0">
+      <button 
+        onClick={() => setActiveTab('public')}
+        className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'public' ? "text-sigvik-accent" : "text-gray-400")}
+      >
+        <Building2 size={20} />
+        <span className="text-[10px] font-medium">{lang === 'sv' ? 'Föreningar' : 'Associations'}</span>
+        {activeTab === 'public' && <div className="w-1 h-1 bg-sigvik-accent rounded-full" />}
+      </button>
+      <button 
+        onClick={() => setActiveTab('contractor')}
+        className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'contractor' ? "text-sigvik-accent" : "text-gray-400")}
+      >
+        <Radio size={20} />
+        <span className="text-[10px] font-medium">{lang === 'sv' ? 'Signaler' : 'Signals'}</span>
+        {activeTab === 'contractor' && <div className="w-1 h-1 bg-sigvik-accent rounded-full" />}
+      </button>
+      <button 
+        onClick={() => setShowInfo(true)}
+        className="flex flex-col items-center gap-1 text-gray-400"
+      >
+        <Info size={20} />
+        <span className="text-[10px] font-medium">Info</span>
+      </button>
+    </nav>
   );
 };
 
@@ -142,13 +190,83 @@ const ScoreBadge = ({ score, label }: { score: number, label: string }) => {
   const color = score > 70 ? 'text-green-600' : score > 40 ? 'text-amber-600' : 'text-red-600';
   return (
     <div className="flex flex-col">
-      <span className="text-[10px] uppercase opacity-50 font-bold">{label}</span>
+      <span className="text-[10px] uppercase opacity-50 font-bold leading-tight">{label}</span>
       <span className={cn("text-2xl font-mono font-bold", color)}>{score}</span>
     </div>
   );
 };
 
+const BrfCard = ({ brf, isSelected, onClick, lang }: { brf: BRF, isSelected: boolean, onClick: () => void, lang: Language }) => {
+  const t = TRANSLATIONS[lang];
+  return (
+    <motion.div
+      layout
+      onClick={onClick}
+      className={cn(
+        "p-4 border-b border-sigvik-line cursor-pointer transition-colors active:bg-sigvik-ink/10",
+        isSelected ? "bg-sigvik-ink text-white" : "hover:bg-sigvik-ink/5"
+      )}
+    >
+      <div className="flex justify-between items-start gap-4">
+        <div className="flex-1 min-w-0">
+          <h3 className="font-bold truncate text-sm uppercase tracking-tight">{brf.name}</h3>
+          <p className={cn("text-[10px] font-mono uppercase opacity-60 truncate", isSelected ? "text-white/60" : "text-sigvik-ink/60")}>
+            {brf.address}, {brf.district}
+          </p>
+        </div>
+        <div className="flex flex-col items-end">
+          <div className={cn(
+            "text-lg font-mono font-bold",
+            isSelected ? "text-white" : brf.intentScore > 70 ? "text-green-600" : brf.intentScore > 40 ? "text-amber-600" : "text-red-600"
+          )}>
+            {brf.intentScore}
+          </div>
+          <div className={cn("text-[8px] font-mono uppercase opacity-50", isSelected ? "text-white/50" : "text-sigvik-ink/50")}>
+            {t.intent_score}
+          </div>
+        </div>
+      </div>
+      
+      <div className="mt-3 flex items-center justify-between">
+        <div className="flex gap-3">
+          <div className="flex flex-col">
+            <span className={cn("text-[8px] font-mono uppercase opacity-50", isSelected ? "text-white/50" : "text-sigvik-ink/50")}>{t.apartments}</span>
+            <span className="text-xs font-bold">{brf.apartments}</span>
+          </div>
+          <div className="flex flex-col">
+            <span className={cn("text-[8px] font-mono uppercase opacity-50", isSelected ? "text-white/50" : "text-sigvik-ink/50")}>{t.built_year}</span>
+            <span className="text-xs font-bold">{brf.builtYear}</span>
+          </div>
+        </div>
+        {brf.predictedProject && (
+          <div className={cn(
+            "px-2 py-0.5 rounded-full text-[8px] font-mono uppercase font-bold border",
+            isSelected ? "bg-white/10 border-white/20 text-white" : "bg-sigvik-ink/5 border-sigvik-ink/10 text-sigvik-ink"
+          )}>
+            {brf.predictedProject}
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+};
+
 // --- Views ---
+
+const BrfRow = ({ index, style, filtered, selectedBrfId, setSelectedBrfId, lang }: any) => {
+  const brf = filtered[index];
+  if (!brf) return null;
+  return (
+    <div style={style}>
+      <BrfCard 
+        brf={brf} 
+        isSelected={selectedBrfId === brf.id} 
+        onClick={() => setSelectedBrfId(brf.id)} 
+        lang={lang}
+      />
+    </div>
+  );
+};
 
 const PublicView = ({ lang }: { lang: Language }) => {
   const t = TRANSLATIONS[lang];
@@ -251,7 +369,7 @@ const PublicView = ({ lang }: { lang: Language }) => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-8">
+    <div className="max-w-7xl mx-auto p-4 md:p-8">
       {/* Persona Onboarding */}
       <AnimatePresence>
         {showPersonaPrompt && !persona && (
@@ -259,7 +377,7 @@ const PublicView = ({ lang }: { lang: Language }) => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="fixed bottom-8 right-8 z-50 w-80 bg-sigvik-ink text-sigvik-bg p-6 shadow-2xl border border-sigvik-line/20"
+            className="fixed bottom-20 md:bottom-8 right-4 md:right-8 z-50 w-[calc(100%-2rem)] md:w-80 bg-sigvik-ink text-sigvik-bg p-6 shadow-2xl border border-sigvik-line/20"
           >
             <p className="text-sm mb-4 leading-relaxed">
               {lang === 'sv' 
@@ -269,19 +387,19 @@ const PublicView = ({ lang }: { lang: Language }) => {
             <div className="space-y-2">
               <button 
                 onClick={() => { setPersona('buyer'); setShowPersonaPrompt(false); }}
-                className="w-full text-left p-2 text-xs border border-sigvik-bg/20 hover:bg-sigvik-bg hover:text-sigvik-ink transition-colors"
+                className="w-full text-left p-3 md:p-2 text-xs border border-sigvik-bg/20 hover:bg-sigvik-bg hover:text-sigvik-ink transition-colors"
               >
                 {lang === 'sv' ? 'Jag är en prospektiv köpare' : 'I am a prospective buyer'}
               </button>
               <button 
                 onClick={() => { setPersona('board'); setShowPersonaPrompt(false); }}
-                className="w-full text-left p-2 text-xs border border-sigvik-bg/20 hover:bg-sigvik-bg hover:text-sigvik-ink transition-colors"
+                className="w-full text-left p-3 md:p-2 text-xs border border-sigvik-bg/20 hover:bg-sigvik-bg hover:text-sigvik-ink transition-colors"
               >
                 {lang === 'sv' ? 'Jag är styrelsemedlem / boende' : 'I am a board member / resident'}
               </button>
               <button 
                 onClick={() => { setPersona('contractor'); setShowPersonaPrompt(false); }}
-                className="w-full text-left p-2 text-xs border border-sigvik-bg/20 hover:bg-sigvik-bg hover:text-sigvik-ink transition-colors"
+                className="w-full text-left p-3 md:p-2 text-xs border border-sigvik-bg/20 hover:bg-sigvik-bg hover:text-sigvik-ink transition-colors"
               >
                 {lang === 'sv' ? 'Jag är förvaltare / entreprenör' : 'I am a manager / contractor'}
               </button>
@@ -290,41 +408,75 @@ const PublicView = ({ lang }: { lang: Language }) => {
         )}
       </AnimatePresence>
 
-      {/* Mandatory Disclaimer - Collapsed by default */}
-      <div className="mb-8 p-4 bg-sigvik-ink text-sigvik-bg text-[10px] leading-relaxed uppercase tracking-wider border-l-4 border-sigvik-line transition-all duration-300">
-        <div className="flex justify-between items-start gap-3">
-          <div className="flex gap-3">
-            <Info size={16} className="shrink-0" />
-            {disclaimerExpanded ? (
-              <p>{t.mandatory_disclaimer}</p>
-            ) : (
-              <p>{lang === 'sv' ? 'Informationen baseras på offentliga källor. Läs mer.' : 'Information is based on public sources. Read more.'}</p>
-            )}
+      {/* Mandatory Disclaimer */}
+      <div className={cn(
+        "mb-4 md:mb-8 transition-all duration-300 overflow-hidden",
+        "md:bg-sigvik-ink md:text-sigvik-bg md:text-[10px] md:leading-relaxed md:uppercase md:tracking-wider md:border-l-4 md:border-sigvik-line md:p-4",
+        "bg-amber-50 text-amber-800 border-b border-amber-200 md:border-none"
+      )}>
+        <div className={cn(
+          "flex justify-between items-center md:items-start gap-3",
+          disclaimerExpanded ? "p-4 md:p-0" : "h-9 px-4 md:h-auto md:p-0"
+        )}>
+          <div className="flex items-center md:items-start gap-3 flex-1">
+            <Info size={16} className="shrink-0 opacity-60 md:opacity-100" />
+            <div className="flex-1">
+              {!disclaimerExpanded ? (
+                <p className="text-[10px] font-medium md:font-normal truncate md:whitespace-normal">
+                  {lang === 'sv' ? 'Informationen baseras på offentliga källor. Tryck för mer.' : 'Information is based on public sources. Press for more.'}
+                </p>
+              ) : (
+                <p className="text-[10px] leading-relaxed uppercase tracking-wider md:normal-case md:tracking-normal">
+                  {t.mandatory_disclaimer}
+                </p>
+              )}
+            </div>
           </div>
           <button 
             onClick={() => setDisclaimerExpanded(!disclaimerExpanded)}
-            className="shrink-0 font-bold hover:underline"
+            className="shrink-0 p-2 -mr-2 md:m-0"
           >
-            {disclaimerExpanded ? '[ - ]' : '[ + ]'}
+            {disclaimerExpanded ? (
+              <span className="hidden md:inline font-bold hover:underline">[ - ]</span>
+            ) : (
+              <span className="hidden md:inline font-bold hover:underline">[ + ]</span>
+            )}
+            <ChevronRight size={16} className={cn("md:hidden transition-transform", disclaimerExpanded && "rotate-90")} />
           </button>
         </div>
       </div>
       
-      <div className="flex flex-col md:flex-row justify-between items-end mb-12 gap-8">
+      {/* Market Overview Strip - Mobile Only */}
+      <div className="flex md:hidden mb-4 bg-gray-50 border-y border-gray-100 overflow-x-auto no-scrollbar">
+        <div className="flex-1 border-r border-gray-200 py-3 px-4 min-w-[120px]">
+          <span className="text-[10px] text-gray-500 uppercase block mb-1">{t.total_brfs}</span>
+          <span className="text-lg font-semibold text-sigvik-accent">14,204</span>
+        </div>
+        <div className="flex-1 border-r border-gray-200 py-3 px-4 min-w-[120px]">
+          <span className="text-[10px] text-gray-500 uppercase block mb-1">{t.avg_financial_score}</span>
+          <span className="text-lg font-semibold text-sigvik-accent">68.4</span>
+        </div>
+        <div className="flex-1 py-3 px-4 min-w-[120px]">
+          <span className="text-[10px] text-gray-500 uppercase block mb-1">{lang === 'sv' ? 'Aktiva signaler' : 'Active signals'}</span>
+          <span className="text-lg font-semibold text-sigvik-accent">142</span>
+        </div>
+      </div>
+
+      <div className="flex flex-col md:flex-row justify-between items-end mb-8 md:mb-12 gap-8">
         <div className="flex-1">
-          <h2 className="font-serif italic text-5xl mb-4 tracking-tight">
+          <h2 className="font-serif italic text-3xl md:text-5xl mb-4 tracking-tight">
             {persona === 'buyer' 
               ? (lang === 'sv' ? 'Hitta din framtida förening' : 'Find your future association')
               : persona === 'board'
               ? (lang === 'sv' ? 'Förstå din förenings data' : 'Understand your association\'s data')
               : (lang === 'sv' ? 'Marknadsöversikt Malmö' : 'Market Overview Malmö')}
           </h2>
-          <p className="max-w-2xl text-lg opacity-70 leading-relaxed">
+          <p className="max-w-2xl text-base md:text-lg opacity-70 leading-relaxed">
             {persona === 'buyer'
-              ? (lang === 'sv' ? 'Välkommen. Du kan söka på föreningens namn i sökfältet — till exempel "BRF Pilen". Sedan visar jag dig föreningens ekonomi, underhållshistorik och vad du bör fråga din mäklare om.' : 'Welcome. You can search for the association\'s name in the search field — for example "BRF Pilen". Then I will show you the association\'s finances, maintenance history, and what you should ask your broker.')
+              ? (lang === 'sv' ? 'Välkommen. Sök på föreningens namn — t.ex. "BRF Pilen".' : 'Welcome. Search for the association\'s name — e.g. "BRF Pilen".')
               : persona === 'board'
-              ? (lang === 'sv' ? 'Du kan söka på din förenings namn och se vilken information vi har om er — ekonomi, underhållsplan, energistatus och vad som finns i offentliga register. Om något är fel eller saknas kan du flagga det direkt.' : 'You can search for your association\'s name and see what information we have about you — finances, maintenance plan, energy status, and what is in public registries. If something is wrong or missing, you can flag it directly.')
-              : (lang === 'sv' ? 'Realtidsdata från Malmös bostadsrättsföreningar. Analysera signaler, intentionsscore och marknadstrender.' : 'Real-time data from Malmö\'s housing associations. Analyze signals, intent scores, and market trends.')}
+              ? (lang === 'sv' ? 'Sök på din förenings namn för att se vår data. Flagga om något är fel.' : 'Search for your association\'s name to see our data. Flag if something is wrong.')
+              : (lang === 'sv' ? 'Realtidsdata från Malmös bostadsrättsföreningar.' : 'Real-time data from Malmö\'s housing associations.')}
           </p>
         </div>
         <div className="hidden lg:flex gap-12 border-l border-sigvik-line/10 pl-12 py-2">
@@ -339,370 +491,419 @@ const PublicView = ({ lang }: { lang: Language }) => {
         </div>
       </div>
 
-      <div className="relative mb-8 flex gap-4">
+      {/* Search & Filter Bar */}
+      <div className="sticky top-[73px] md:relative md:top-0 z-40 bg-white md:bg-transparent mb-8 flex flex-col md:flex-row gap-4 shadow-sm md:shadow-none -mx-4 px-4 py-3 md:m-0 md:p-0 md:mb-12">
         <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 opacity-30" size={20} />
           <input 
             type="text" 
-            placeholder={t.search_placeholder}
-            className="w-full bg-white border border-sigvik-line/20 p-4 pl-12 font-mono text-lg focus:outline-none focus:border-sigvik-ink"
+            placeholder={lang === 'sv' ? 'Sök förening...' : 'Search association...'}
+            className="w-full h-12 md:h-16 bg-sigvik-bg md:bg-white border border-sigvik-line/10 md:border-sigvik-line/20 p-4 pl-12 font-mono text-base md:text-xl focus:outline-none focus:border-sigvik-ink transition-all"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          {(search.toLowerCase().includes('stockholm') || search.toLowerCase().includes('göteborg')) && (
-            <div className="absolute top-full left-0 right-0 mt-2 p-3 bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-bold uppercase tracking-wider z-10">
-              {t.phase2_notice}
-            </div>
-          )}
-          {showNavGuidance && (
-            <div className="absolute top-full left-0 right-0 mt-2 p-3 bg-sigvik-ink text-sigvik-bg text-[10px] font-bold uppercase tracking-wider z-10 flex justify-between items-center">
-              <span>{showNavGuidance}</span>
-              <button onClick={() => setShowNavGuidance(null)} className="opacity-50 hover:opacity-100">✕</button>
-            </div>
+          {search && (
+            <button 
+              onClick={() => setSearch('')}
+              className="absolute right-4 top-1/2 -translate-y-1/2 opacity-30 hover:opacity-100 p-2"
+            >
+              <X size={18} />
+            </button>
           )}
         </div>
-        <div className="flex items-center gap-4 bg-white border border-sigvik-line/20 px-4">
-          <span className="text-[10px] font-bold uppercase opacity-40">Sort:</span>
-          <select 
-            className="bg-transparent text-[10px] font-bold uppercase outline-none"
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
-          >
-            <option value="name">{t.sort_alphabetical}</option>
-            <option value="newest">{t.sort_newest}</option>
-            <option value="debt_low">{t.sort_debt_low}</option>
-            <option value="debt_high">{t.sort_debt_high}</option>
-            <option value="year_oldest">{t.sort_year_oldest}</option>
-            <option value="year_newest">{t.sort_year_newest}</option>
-          </select>
+        <div className="flex gap-2 overflow-x-auto pb-1 md:pb-0 no-scrollbar">
+          <div className="flex items-center gap-2 px-4 h-10 md:h-16 bg-sigvik-bg md:bg-white border border-sigvik-line/10 md:border-sigvik-line/20 whitespace-nowrap">
+            <span className="text-[10px] font-bold uppercase opacity-40">Sort:</span>
+            <select 
+              className="bg-transparent text-[10px] font-bold uppercase outline-none cursor-pointer"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+            >
+              <option value="name">{t.sort_alphabetical}</option>
+              <option value="newest">{t.sort_newest}</option>
+              <option value="debt_low">{t.sort_debt_low}</option>
+              <option value="debt_high">{t.sort_debt_high}</option>
+              <option value="year_oldest">{t.sort_year_oldest}</option>
+              <option value="year_newest">{t.sort_year_newest}</option>
+            </select>
+          </div>
+          <button className="md:hidden flex items-center gap-2 px-4 h-10 bg-sigvik-bg border border-sigvik-line/10 whitespace-nowrap text-[10px] font-bold uppercase">
+            <Filter size={14} />
+            <span>Filter</span>
+          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-        <div className="md:col-span-1 space-y-8">
-          {/* Filters Section */}
-          <div className="bg-white border border-sigvik-line p-6 space-y-6">
-            <h3 className="col-header border-b border-sigvik-line/10 pb-2 mb-4">Filter</h3>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_municipality}</label>
-                <div className="flex flex-wrap gap-2">
-                  {['Husie', 'Limhamn', 'Centrum', 'Västra Hamnen', 'Hyllie', 'Segevång', 'Oxie', 'Rosengård', 'Fosie', 'Kirseberg'].map(d => (
-                    <button 
-                      key={d}
-                      onClick={() => setFilterMunicipality(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])}
-                      className={cn("px-2 py-1 text-[10px] border transition-all", filterMunicipality.includes(d) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
-                    >
-                      {d}
-                    </button>
-                  ))}
+      <div className="relative overflow-hidden min-h-[600px]">
+        <div className={cn(
+          "grid grid-cols-1 md:grid-cols-4 gap-8 transition-transform duration-250 ease-out",
+          selectedBrfId && "translate-x-[-100%] md:translate-x-0"
+        )}>
+          <div className="md:col-span-1 space-y-8">
+            {/* Filters Section - Hidden on mobile for now or moved */}
+            <div className="hidden md:block bg-white border border-sigvik-line p-6 space-y-6">
+              <h3 className="col-header border-b border-sigvik-line/10 pb-2 mb-4">Filter</h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_municipality}</label>
+                  <div className="flex flex-wrap gap-2">
+                    {['Husie', 'Limhamn', 'Centrum', 'Västra Hamnen', 'Hyllie', 'Segevång', 'Oxie', 'Rosengård', 'Fosie', 'Kirseberg'].map(d => (
+                      <button 
+                        key={d}
+                        onClick={() => setFilterMunicipality(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])}
+                        className={cn("px-2 py-1 text-[10px] border transition-all", filterMunicipality.includes(d) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_apartments} (32–180)</label>
-                <input 
-                  type="range" min="32" max="180" 
-                  value={filterApartments[1]} 
-                  onChange={(e) => setFilterApartments([32, parseInt(e.target.value)])}
-                  className="w-full accent-sigvik-ink"
-                />
-                <div className="flex justify-between text-[10px] font-mono opacity-40 mt-1">
-                  <span>32</span>
-                  <span>{filterApartments[1]}</span>
+                <div>
+                  <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_apartments} (32–180)</label>
+                  <input 
+                    type="range" min="32" max="180" 
+                    value={filterApartments[1]} 
+                    onChange={(e) => setFilterApartments([32, parseInt(e.target.value)])}
+                    className="w-full accent-sigvik-ink"
+                  />
+                  <div className="flex justify-between text-[10px] font-mono opacity-40 mt-1">
+                    <span>32</span>
+                    <span>{filterApartments[1]}</span>
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_built_year}</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {['pre-1960', '1960-1985', '1986-2000', '2001+'].map(range => (
-                    <button 
-                      key={range}
-                      onClick={() => setFilterBuiltYear(prev => prev.includes(range) ? prev.filter(x => x !== range) : [...prev, range])}
-                      className={cn("px-2 py-1 text-[10px] border transition-all", filterBuiltYear.includes(range) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
-                    >
-                      {range}
-                    </button>
-                  ))}
+                <div>
+                  <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_built_year}</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {['pre-1960', '1960-1985', '1986-2000', '2001+'].map(range => (
+                      <button 
+                        key={range}
+                        onClick={() => setFilterBuiltYear(prev => prev.includes(range) ? prev.filter(x => x !== range) : [...prev, range])}
+                        className={cn("px-2 py-1 text-[10px] border transition-all", filterBuiltYear.includes(range) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
+                      >
+                        {range}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_project_type}</label>
-                <div className="flex flex-wrap gap-2">
-                  {['Stambyte', 'Fasad', 'Fönster', 'Tak', 'Energi', 'Hiss'].map(p => (
-                    <button 
-                      key={p}
-                      onClick={() => setFilterProjectType(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])}
-                      className={cn("px-2 py-1 text-[10px] border transition-all", filterProjectType.includes(p) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
-                    >
-                      {p}
-                    </button>
-                  ))}
+                <div>
+                  <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_project_type}</label>
+                  <div className="flex flex-wrap gap-2">
+                    {['Stambyte', 'Fasad', 'Fönster', 'Tak', 'Energi', 'Hiss'].map(p => (
+                      <button 
+                        key={p}
+                        onClick={() => setFilterProjectType(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])}
+                        className={cn("px-2 py-1 text-[10px] border transition-all", filterProjectType.includes(p) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_fee_trajectory}</label>
-                <div className="flex flex-wrap gap-2">
-                  {['Stable', 'Rising 1-5%', 'Rising 6-15%', 'Rising 16%+', 'Falling'].map(f => (
-                    <button 
-                      key={f}
-                      onClick={() => setFilterFeeTrajectory(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f])}
-                      className={cn("px-2 py-1 text-[10px] border transition-all", filterFeeTrajectory.includes(f) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
-                    >
-                      {f}
-                    </button>
-                  ))}
+                <div>
+                  <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_fee_trajectory}</label>
+                  <div className="flex flex-wrap gap-2">
+                    {['Stable', 'Rising 1-5%', 'Rising 6-15%', 'Rising 16%+', 'Falling'].map(f => (
+                      <button 
+                        key={f}
+                        onClick={() => setFilterFeeTrajectory(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f])}
+                        className={cn("px-2 py-1 text-[10px] border transition-all", filterFeeTrajectory.includes(f) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
+                      >
+                        {f}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_debt} (45k–185k)</label>
-                <input 
-                  type="range" min="45000" max="185000" step="5000"
-                  value={filterDebt[1]} 
-                  onChange={(e) => setFilterDebt([45000, parseInt(e.target.value)])}
-                  className="w-full accent-sigvik-ink"
-                />
-                <div className="flex justify-between text-[10px] font-mono opacity-40 mt-1">
-                  <span>45k</span>
-                  <span>{Math.round(filterDebt[1]/1000)}k</span>
+                <div>
+                  <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_debt} (45k–185k)</label>
+                  <input 
+                    type="range" min="45000" max="185000" step="5000"
+                    value={filterDebt[1]} 
+                    onChange={(e) => setFilterDebt([45000, parseInt(e.target.value)])}
+                    className="w-full accent-sigvik-ink"
+                  />
+                  <div className="flex justify-between text-[10px] font-mono opacity-40 mt-1">
+                    <span>45k</span>
+                    <span>{Math.round(filterDebt[1]/1000)}k</span>
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_maintenance_status}</label>
-                <div className="flex flex-wrap gap-2">
-                  {['Aktuell', 'Föråldrad', 'Saknas', 'Okänd'].map(s => (
-                    <button 
-                      key={s}
-                      onClick={() => setFilterMaintenanceStatus(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])}
-                      className={cn("px-2 py-1 text-[10px] border transition-all", filterMaintenanceStatus.includes(s) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
-                    >
-                      {s}
-                    </button>
-                  ))}
+                <div>
+                  <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_maintenance_status}</label>
+                  <div className="flex flex-wrap gap-2">
+                    {['Aktuell', 'Föråldrad', 'Saknas', 'Okänd'].map(s => (
+                      <button 
+                        key={s}
+                        onClick={() => setFilterMaintenanceStatus(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])}
+                        className={cn("px-2 py-1 text-[10px] border transition-all", filterMaintenanceStatus.includes(s) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_energy_class}</label>
-                <div className="flex flex-wrap gap-2">
-                  {['A', 'B', 'C', 'D', 'E', 'F', 'G'].map(c => (
-                    <button 
-                      key={c}
-                      onClick={() => setFilterEnergyClass(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c])}
-                      className={cn("w-6 h-6 flex items-center justify-center text-[10px] border transition-all", filterEnergyClass.includes(c) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
-                    >
-                      {c}
-                    </button>
-                  ))}
+                <div>
+                  <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_energy_class}</label>
+                  <div className="flex flex-wrap gap-2">
+                    {['A', 'B', 'C', 'D', 'E', 'F', 'G'].map(c => (
+                      <button 
+                        key={c}
+                        onClick={() => setFilterEnergyClass(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c])}
+                        className={cn("w-6 h-6 flex items-center justify-center text-[10px] border transition-all", filterEnergyClass.includes(c) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <div>
-            <span className="col-header block mb-2">{t.search_results}</span>
-            <div className="space-y-2">
-              {filtered.map(brf => (
-                <div 
-                  key={brf.id}
-                  onClick={() => setSelectedBrfId(brf.id)}
-                  className={cn("p-4 border border-sigvik-line/10 cursor-pointer transition-all", selectedBrfId === brf.id ? "bg-sigvik-ink text-sigvik-bg" : "bg-white hover:bg-sigvik-ink/5")}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <div className="font-bold">{brf.name}</div>
-                        <span className="px-1 py-0.5 bg-sigvik-bg text-[6px] font-bold uppercase border border-sigvik-line/10">{t.verified_registry}</span>
-                      </div>
-                      <div className="text-[10px] opacity-60 font-mono uppercase mt-1">
-                        {brf.district} • {brf.builtYear} • {brf.apartments} lgh
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 mt-2 text-[9px] font-mono opacity-40">
-                        <span>{brf.debtPerUnit.toLocaleString()} kr/lgh</span>
-                        <span>{brf.feePerKvm} kr/kvm</span>
-                      </div>
-                    </div>
-                  </div>
+            <div>
+              <div className="flex justify-between items-center mb-2 px-4 md:px-0">
+                <span className="col-header">{t.search_results}</span>
+                <div className="flex gap-4 md:hidden">
+                  <button onClick={() => setShowF3Modal('add')} className="p-2 text-sigvik-accent">
+                    <Plus size={20} />
+                  </button>
+                  <button onClick={() => setShowF3Modal('flag')} className="p-2 text-sigvik-accent">
+                    <AlertTriangle size={20} />
+                  </button>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="pt-6 border-t border-sigvik-line/10 space-y-3">
-            <button 
-              onClick={() => setShowF3Modal('add')}
-              className="w-full flex items-center justify-between p-4 border border-dashed border-sigvik-line/30 hover:border-sigvik-ink transition-colors group"
-            >
-              <span className="text-[10px] font-bold uppercase tracking-widest">{t.add_missing_brf}</span>
-              <Plus size={14} className="opacity-30 group-hover:opacity-100" />
-            </button>
-            <button 
-              onClick={() => setShowF3Modal('flag')}
-              className="w-full flex items-center justify-between p-4 border border-dashed border-sigvik-line/30 hover:border-sigvik-ink transition-colors group"
-            >
-              <span className="text-[10px] font-bold uppercase tracking-widest">{t.flag_error}</span>
-              <AlertTriangle size={14} className="opacity-30 group-hover:opacity-100" />
-            </button>
-          </div>
-        </div>
-
-        <div className="md:col-span-3">
-          <AnimatePresence mode="wait">
-            {selectedBrf ? (
-              <motion.div 
-                key={selectedBrf.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className="bg-white border border-sigvik-line p-8"
-              >
-                <div className="flex justify-between items-start mb-8">
-                  <div>
-                    <h3 className="text-3xl font-bold uppercase tracking-tighter">{selectedBrf.name}</h3>
-                    <p className="font-mono text-sm opacity-50">{selectedBrf.address}, {selectedBrf.district}</p>
-                    <div className="flex gap-2 mt-2">
-                      <span className="px-2 py-0.5 bg-sigvik-bg text-[8px] font-bold uppercase border border-sigvik-line/10">{t.verified_registry}</span>
-                      {selectedBrf.maintenancePlanStatus === 'Aktuell' && <span className="px-2 py-0.5 bg-green-50 text-green-700 text-[8px] font-bold uppercase border border-green-200">Verifierad — community</span>}
-                    </div>
-                  </div>
-                  <div className="flex gap-8">
-                    <ScoreBadge label={t.financial_health} score={selectedBrf.financialScore} />
-                    <ScoreBadge label={t.maintenance_liability} score={selectedBrf.maintenanceLiability} />
-                  </div>
-                </div>
-
-                {/* Board Member Callout */}
-                {persona === 'board' && (
-                  <div className="mb-8 p-4 bg-sigvik-accent/5 border border-sigvik-accent/20">
-                    <p className="text-xs font-bold uppercase text-sigvik-accent mb-2">
-                      {lang === 'sv' ? 'Stämmer inte datan?' : 'Is the data incorrect?'}
-                    </p>
-                    <p className="text-sm opacity-80 mb-3">
-                      {lang === 'sv' 
-                        ? 'Om du ser information som är felaktig eller saknas kan du flagga det direkt. Det är det snabbaste sättet att säkerställa att er förening presenteras korrekt.' 
-                        : 'If you see information that is incorrect or missing, you can flag it directly. This is the fastest way to ensure your association is presented correctly.'}
-                    </p>
-                    <button 
-                      onClick={() => setShowF3Modal('flag')}
-                      className="text-[10px] font-bold uppercase tracking-widest underline hover:no-underline"
-                    >
-                      {t.flag_error}
-                    </button>
-                  </div>
+              </div>
+              <div className="divide-y divide-gray-100 md:space-y-2 md:divide-y-0">
+                {filtered.length > 50 ? (
+                  <List
+                    rowCount={filtered.length}
+                    rowHeight={100}
+                    rowProps={{ filtered, selectedBrfId, setSelectedBrfId, lang }}
+                    rowComponent={BrfRow}
+                    style={{ height: window.innerWidth < 768 ? window.innerHeight - 250 : 600, width: '100%' }}
+                  />
+                ) : (
+                  filtered.map(brf => (
+                    <BrfCard 
+                      key={brf.id}
+                      brf={brf} 
+                      isSelected={selectedBrfId === brf.id} 
+                      onClick={() => setSelectedBrfId(brf.id)} 
+                      lang={lang}
+                    />
+                  ))
                 )}
+              </div>
+            </div>
 
-                <div className="grid grid-cols-2 gap-8 mb-12">
-                  <div className="p-6 bg-sigvik-bg/30 border border-sigvik-line/5">
-                    <h4 className="col-header mb-4">{t.building_info}</h4>
-                    <div className="space-y-3">
-                      <div className="flex justify-between text-sm">
-                        <span className="opacity-50">{t.built_year}</span>
-                        <span className="font-mono">{selectedBrf.builtYear}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="opacity-50">{t.apartments}</span>
-                        <span className="font-mono">{selectedBrf.apartments}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="opacity-50">{t.municipality}</span>
-                        <span className="font-mono">{selectedBrf.municipality}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="opacity-50">{t.energy_class}</span>
-                        <div className="flex flex-col items-end gap-1">
-                          <span className="font-mono">{selectedBrf.energyClass}</span>
-                          {persona === 'buyer' && (
-                            <span className="text-[10px] opacity-40 italic max-w-[150px] text-right">
-                              {['E', 'F', 'G'].includes(selectedBrf.energyClass)
-                                ? (lang === 'sv' ? 'Kan behöva investera i energieffektivisering före 2030.' : 'May need to invest in energy efficiency before 2030.')
-                                : (lang === 'sv' ? 'God energiprestanda.' : 'Good energy performance.')}
-                            </span>
-                          )}
+            <div className="hidden md:block pt-6 border-t border-sigvik-line/10 space-y-3">
+              <button 
+                onClick={() => setShowF3Modal('add')}
+                className="w-full flex items-center justify-between p-4 border border-dashed border-sigvik-line/30 hover:border-sigvik-ink transition-colors group"
+              >
+                <span className="text-[10px] font-bold uppercase tracking-widest">{t.add_missing_brf}</span>
+                <Plus size={14} className="opacity-30 group-hover:opacity-100" />
+              </button>
+              <button 
+                onClick={() => setShowF3Modal('flag')}
+                className="w-full flex items-center justify-between p-4 border border-dashed border-sigvik-line/30 hover:border-sigvik-ink transition-colors group"
+              >
+                <span className="text-[10px] font-bold uppercase tracking-widest">{t.flag_error}</span>
+                <AlertTriangle size={14} className="opacity-30 group-hover:opacity-100" />
+              </button>
+            </div>
+          </div>
+
+          <div className={cn(
+            "md:col-span-3 fixed inset-0 z-50 bg-white md:relative md:inset-auto md:z-0 transition-transform duration-300 ease-in-out",
+            selectedBrfId ? "translate-x-0" : "translate-x-full md:translate-x-0"
+          )}>
+            <AnimatePresence mode="wait">
+              {selectedBrf ? (
+                <motion.div 
+                  initial={{ x: '100%' }}
+                  animate={{ x: 0 }}
+                  exit={{ x: '100%' }}
+                  transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                  className="h-full flex flex-col bg-white"
+                >
+                  {/* Mobile Back Button */}
+                  <div className="md:hidden sticky top-0 z-50 h-14 bg-white border-b border-gray-100 flex items-center px-4 gap-4">
+                    <button 
+                      onClick={() => setSelectedBrfId(null)}
+                      className="p-2 -ml-2 text-sigvik-ink"
+                    >
+                      <ChevronLeft size={24} />
+                    </button>
+                    <span className="text-sm font-bold uppercase tracking-tight truncate flex-1 text-center pr-8">
+                      {selectedBrf.name}
+                    </span>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-4 md:p-8">
+                    <div className="flex flex-col md:flex-row justify-between items-start mb-8 gap-6">
+                      <div>
+                        <h3 className="text-2xl md:text-3xl font-bold uppercase tracking-tighter">{selectedBrf.name}</h3>
+                        <p className="font-mono text-sm opacity-50">{selectedBrf.address}, {selectedBrf.district}</p>
+                        <div className="flex gap-2 mt-2">
+                          <span className="px-2 py-0.5 bg-sigvik-bg text-[8px] font-bold uppercase border border-sigvik-line/10">{t.verified_registry}</span>
+                          {selectedBrf.maintenancePlanStatus === 'Aktuell' && <span className="px-2 py-0.5 bg-green-50 text-green-700 text-[8px] font-bold uppercase border border-green-200">Verifierad — community</span>}
                         </div>
                       </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="opacity-50">{t.debt_per_unit}</span>
-                        <div className="flex flex-col items-end gap-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono">{selectedBrf.debtPerUnit.toLocaleString()} kr</span>
-                            <span className="px-1 py-0.5 bg-sigvik-ink/5 text-[6px] font-bold uppercase border border-sigvik-line/10" title="NLP Confidence: High">Hög</span>
+                      <div className="flex gap-8 w-full md:w-auto justify-between md:justify-start border-t border-gray-100 pt-4 md:border-none md:pt-0">
+                        <ScoreBadge label={t.financial_health} score={selectedBrf.financialScore} />
+                        <ScoreBadge label={t.maintenance_liability} score={selectedBrf.maintenanceLiability} />
+                      </div>
+                    </div>
+
+                    {/* Board Member Callout */}
+                    {persona === 'board' && (
+                      <div className="mb-8 p-4 bg-sigvik-accent/5 border border-sigvik-accent/20">
+                        <p className="text-xs font-bold uppercase text-sigvik-accent mb-2">
+                          {lang === 'sv' ? 'Stämmer inte datan?' : 'Is the data incorrect?'}
+                        </p>
+                        <p className="text-sm opacity-80 mb-3">
+                          {lang === 'sv' 
+                            ? 'Om du ser information som är felaktig eller saknas kan du flagga det direkt.' 
+                            : 'If you see information that is incorrect or missing, you can flag it directly.'}
+                        </p>
+                        <button 
+                          onClick={() => setShowF3Modal('flag')}
+                          className="text-[10px] font-bold uppercase tracking-widest underline hover:no-underline"
+                        >
+                          {t.flag_error}
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8 mb-12">
+                      <div className="p-4 md:p-6 bg-sigvik-bg/30 border border-sigvik-line/5">
+                        <h4 className="col-header mb-4">{t.building_info}</h4>
+                        <div className="space-y-4 md:space-y-3">
+                          <div className="flex justify-between items-center md:items-start text-sm border-b border-gray-100 pb-4 md:border-none md:pb-0">
+                            <span className="opacity-50">{t.built_year}</span>
+                            <span className="font-mono font-semibold md:font-normal text-sigvik-accent md:text-inherit">{selectedBrf.builtYear}</span>
                           </div>
-                          <span className="text-[10px] opacity-40 italic">
-                            {selectedBrf.debtPerUnit < 100000 
-                              ? (lang === 'sv' ? 'Normal skuldnivå för denna storlek.' : 'Normal debt level for this size.')
-                              : (lang === 'sv' ? 'Något högre skuldnivå än genomsnittet.' : 'Slightly higher debt level than average.')}
-                          </span>
+                          <div className="flex justify-between items-center md:items-start text-sm border-b border-gray-100 pb-4 md:border-none md:pb-0">
+                            <span className="opacity-50">{t.apartments}</span>
+                            <span className="font-mono font-semibold md:font-normal text-sigvik-accent md:text-inherit">{selectedBrf.apartments}</span>
+                          </div>
+                          <div className="flex justify-between items-center md:items-start text-sm border-b border-gray-100 pb-4 md:border-none md:pb-0">
+                            <span className="opacity-50">{t.municipality}</span>
+                            <span className="font-mono font-semibold md:font-normal text-sigvik-accent md:text-inherit">{selectedBrf.municipality}</span>
+                          </div>
+                          <div className="flex justify-between items-center md:items-start text-sm border-b border-gray-100 pb-4 md:border-none md:pb-0">
+                            <span className="opacity-50">{t.energy_class}</span>
+                            <div className="flex flex-col items-end gap-1">
+                              <span className="font-mono font-semibold md:font-normal text-sigvik-accent md:text-inherit">{selectedBrf.energyClass}</span>
+                              {persona === 'buyer' && (
+                                <span className="text-[10px] opacity-40 italic max-w-[150px] text-right">
+                                  {['E', 'F', 'G'].includes(selectedBrf.energyClass)
+                                    ? (lang === 'sv' ? 'Kan behöva investera i energieffektivisering före 2030.' : 'May need to invest in energy efficiency before 2030.')
+                                    : (lang === 'sv' ? 'God energiprestanda.' : 'Good energy performance.')}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex justify-between items-center md:items-start text-sm border-b border-gray-100 pb-4 md:border-none md:pb-0">
+                            <span className="opacity-50">{t.debt_per_unit}</span>
+                            <div className="flex flex-col items-end gap-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-semibold md:font-normal text-sigvik-accent md:text-inherit">{selectedBrf.debtPerUnit.toLocaleString()} kr</span>
+                                <span className="px-1 py-0.5 bg-sigvik-ink/5 text-[6px] font-bold uppercase border border-sigvik-line/10" title="NLP Confidence: High">Hög</span>
+                              </div>
+                              <span className="text-[10px] opacity-40 italic">
+                                {selectedBrf.debtPerUnit < 100000 
+                                  ? (lang === 'sv' ? 'Normal skuldnivå.' : 'Normal debt level.')
+                                  : (lang === 'sv' ? 'Högre skuldnivå.' : 'Higher debt level.')}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex justify-between items-center md:items-start text-sm">
+                            <span className="opacity-50">{t.trajectory}</span>
+                            <div className="flex flex-col items-end gap-1">
+                              <span className="font-mono font-semibold md:font-normal text-sigvik-accent md:text-inherit">{selectedBrf.feeTrajectory}</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="opacity-50">{t.trajectory}</span>
-                        <div className="flex flex-col items-end gap-1">
-                          <span className="font-mono">{selectedBrf.feeTrajectory}</span>
-                          <span className="text-[10px] opacity-40 italic">
-                            {lang === 'sv' 
-                              ? `Avgiften har varit ${selectedBrf.feeTrajectory.toLowerCase()} de senaste två åren.` 
-                              : `The fee has been ${selectedBrf.feeTrajectory.toLowerCase()} over the last two years.`}
-                          </span>
+                      <div className="p-4 md:p-6 bg-sigvik-bg/30 border border-sigvik-line/5">
+                        <h4 className="col-header mb-4">{t.comparison}</h4>
+                        <div className="h-32">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={[
+                              { name: 'Avg', value: 65 },
+                              { name: selectedBrf.name, value: selectedBrf.financialScore }
+                            ]}>
+                              <XAxis dataKey="name" hide />
+                              <Tooltip />
+                              <Bar dataKey="value">
+                                { [0, 1].map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={index === 1 ? '#141414' : '#14141444'} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
                         </div>
+                        <p className="mt-4 text-[10px] font-mono opacity-40 uppercase">
+                          {142 < 5 ? t.insufficient_comparable_data : t.sample_size.replace('{count}', '142')}
+                        </p>
                       </div>
                     </div>
-                  </div>
-                  <div className="p-6 bg-sigvik-bg/30 border border-sigvik-line/5">
-                    <h4 className="col-header mb-4">{t.comparison}</h4>
-                    <div className="h-32">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={[
-                          { name: 'Avg', value: 65 },
-                          { name: selectedBrf.name, value: selectedBrf.financialScore }
-                        ]}>
-                          <XAxis dataKey="name" hide />
-                          <Tooltip />
-                          <Bar dataKey="value">
-                            { [0, 1].map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={index === 1 ? '#141414' : '#14141444'} />
-                            ))}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                    <p className="mt-4 text-[10px] font-mono opacity-40 uppercase">
-                      {142 < 5 ? t.insufficient_comparable_data : t.sample_size.replace('{count}', '142')}
-                    </p>
-                  </div>
-                </div>
 
-                {/* Association History Section (Type 5) */}
-                {selectedBrf.history && (
-                  <div className="mb-12">
-                    <div className="flex justify-between items-end mb-6">
-                      <h4 className="col-header">{t.history_title}</h4>
-                      <div className="text-[10px] font-mono opacity-40 uppercase">
-                        {t.history_data_quality}: <span className="text-sigvik-ink font-bold">Hög (iXBRL)</span>
-                      </div>
-                    </div>
-                    <div className="border border-sigvik-line/10 overflow-hidden">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-sigvik-bg/50 border-b border-sigvik-line/10">
-                          <tr>
-                            <th className="p-3 font-bold uppercase tracking-wider">{t.history_year}</th>
-                            <th className="p-3 font-bold uppercase tracking-wider">{t.history_goal}</th>
-                            <th className="p-3 font-bold uppercase tracking-wider">{t.history_outcome}</th>
-                            <th className="p-3 font-bold uppercase tracking-wider">{t.history_status}</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-sigvik-line/5">
+                    {/* Association History Section */}
+                    {selectedBrf.history && (
+                      <div className="mb-12">
+                        <div className="flex justify-between items-end mb-6">
+                          <h4 className="col-header">{t.history_title}</h4>
+                          <div className="text-[10px] font-mono opacity-40 uppercase hidden md:block">
+                            {t.history_data_quality}: <span className="text-sigvik-ink font-bold">Hög (iXBRL)</span>
+                          </div>
+                        </div>
+                        
+                        {/* Desktop Table */}
+                        <div className="hidden md:block border border-sigvik-line/10 overflow-hidden">
+                          <table className="w-full text-left text-xs">
+                            <thead className="bg-sigvik-bg/50 border-b border-sigvik-line/10">
+                              <tr>
+                                <th className="p-3 font-bold uppercase tracking-wider">{t.history_year}</th>
+                                <th className="p-3 font-bold uppercase tracking-wider">{t.history_goal}</th>
+                                <th className="p-3 font-bold uppercase tracking-wider">{t.history_outcome}</th>
+                                <th className="p-3 font-bold uppercase tracking-wider">{t.history_status}</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-sigvik-line/5">
+                              {selectedBrf.history.map((item, i) => (
+                                <tr key={i} className="hover:bg-sigvik-bg/20 transition-colors">
+                                  <td className="p-3 font-mono">{item.year}</td>
+                                  <td className="p-3 opacity-80 italic">"{item.goal}"</td>
+                                  <td className="p-3 opacity-80">{item.outcome}</td>
+                                  <td className="p-3">
+                                    <span className={cn(
+                                      "px-2 py-0.5 text-[8px] font-bold uppercase border",
+                                      item.status === 'Uppfyllt' ? "bg-green-50 text-green-700 border-green-200" :
+                                      item.status === 'Ej uppfyllt' ? "bg-red-50 text-red-700 border-red-200" :
+                                      "bg-amber-50 text-amber-700 border-amber-200"
+                                    )}>
+                                      {item.status}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Mobile Cards */}
+                        <div className="md:hidden space-y-4">
                           {selectedBrf.history.map((item, i) => (
-                            <tr key={i} className="hover:bg-sigvik-bg/20 transition-colors">
-                              <td className="p-3 font-mono">{item.year}</td>
-                              <td className="p-3 opacity-80 italic">"{item.goal}"</td>
-                              <td className="p-3 opacity-80">{item.outcome}</td>
-                              <td className="p-3">
+                            <div key={i} className="p-4 border border-gray-100 bg-gray-50/30 space-y-3">
+                              <div className="flex justify-between items-center">
+                                <span className="font-mono font-bold text-lg">{item.year}</span>
                                 <span className={cn(
                                   "px-2 py-0.5 text-[8px] font-bold uppercase border",
                                   item.status === 'Uppfyllt' ? "bg-green-50 text-green-700 border-green-200" :
@@ -711,118 +912,142 @@ const PublicView = ({ lang }: { lang: Language }) => {
                                 )}>
                                   {item.status}
                                 </span>
-                              </td>
-                            </tr>
+                              </div>
+                              <p className="text-sm italic opacity-80">"{item.goal}"</p>
+                              <p className="text-sm opacity-70">{item.outcome}</p>
+                            </div>
                           ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div className="mt-6 grid grid-cols-2 gap-8">
-                      <div>
-                        <span className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.history_pattern}</span>
-                        <p className="text-sm italic opacity-70 leading-relaxed">
-                          {lang === 'sv' 
-                            ? 'Föreningen uppvisar ett mönster av att prioritera akuta läckage framför planerade energibesparingsmål. Underhållsplanen tycks följas reaktivt.'
-                            : 'The association shows a pattern of prioritizing acute leaks over planned energy saving goals. The maintenance plan seems to be followed reactively.'}
-                        </p>
+                        </div>
+
+                        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+                          <div>
+                            <span className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.history_pattern}</span>
+                            <p className="text-sm italic opacity-70 leading-relaxed">
+                              {lang === 'sv' 
+                                ? 'Föreningen uppvisar ett mönster av att prioritera akuta läckage framför planerade energibesparingsmål.'
+                                : 'The association shows a pattern of prioritizing acute leaks over planned energy saving goals.'}
+                            </p>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.history_questions}</span>
+                            <ul className="text-sm space-y-2 opacity-70 list-disc pl-4">
+                              <li>{lang === 'sv' ? 'Finns en aktuell underhållsplan?' : 'Is there a current maintenance plan?'}</li>
+                              <li>{lang === 'sv' ? 'Vad är status för stambytet?' : 'What is the status of the pipe replacement?'}</li>
+                            </ul>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <span className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.history_questions}</span>
-                        <ul className="text-sm space-y-2 opacity-70 list-disc pl-4">
-                          <li>{lang === 'sv' ? 'Finns en aktuell underhållsplan?' : 'Is there a current maintenance plan?'}</li>
-                          <li>{lang === 'sv' ? 'Vad är status för stambytet som planerades 2023?' : 'What is the status of the pipe replacement planned for 2023?'}</li>
-                        </ul>
-                      </div>
-                    </div>
+                    )}
+
                     <p className="mt-8 text-[9px] opacity-40 leading-relaxed italic border-t border-sigvik-line/10 pt-4">
                       {t.history_disclaimer}
                     </p>
-                  </div>
-                )}
 
-                <div className="border-t border-sigvik-line/10 pt-8">
-                  <h4 className="col-header mb-4">{t.recommended_actions}</h4>
-                  <div className="space-y-4">
-                    <div className="flex gap-4 items-start">
-                      <div className="p-2 bg-amber-100 text-amber-700 rounded">
-                        <AlertTriangle size={18} />
+                    <div className="border-t border-sigvik-line/10 pt-8">
+                      <h4 className="col-header mb-4">{t.recommended_actions}</h4>
+                      <div className="space-y-4">
+                        <div className="flex gap-4 items-start p-4 bg-amber-50 border border-amber-100">
+                          <div className="p-2 bg-amber-100 text-amber-700 rounded">
+                            <AlertTriangle size={18} />
+                          </div>
+                          <div>
+                            <p className="font-bold text-sm">
+                              {lang === 'sv' ? 'Begär förtydligande om underhållsplan' : 'Request clarification on maintenance plan'}
+                            </p>
+                            <p className="text-xs opacity-60">
+                              {lang === 'sv' 
+                                ? 'Föreningens underhållsplan är markerad som föråldrad.' 
+                                : 'The association\'s maintenance plan is marked as outdated.'}
+                            </p>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-bold text-sm">
-                          {lang === 'sv' ? 'Begär förtydligande om underhållsplan' : 'Request clarification on maintenance plan'}
-                        </p>
-                        <p className="text-xs opacity-60">
-                          {lang === 'sv' 
-                            ? 'Föreningens underhållsplan är markerad som föråldrad. Fråga mäklaren om styrelsen har beslutat om en ny teknisk besiktning.' 
-                            : 'The association\'s maintenance plan is marked as outdated. Ask the broker if the board has decided on a new technical inspection.'}
+                      
+                      {/* Persona A - Questions for Broker */}
+                      <div className="mt-8 pt-8 border-t border-sigvik-line/5">
+                        <h5 className="text-[10px] font-bold uppercase opacity-40 mb-4">{lang === 'sv' ? 'Tre frågor att ställa till mäklaren' : 'Three questions to ask the broker'}</h5>
+                        <ul className="space-y-4 md:space-y-3">
+                          {[
+                            lang === 'sv' ? 'Finns det en aktuell underhållsplan?' : 'Is there a current maintenance plan?',
+                            lang === 'sv' ? `Hur ser planen ut för energiklass ${selectedBrf.energyClass}?` : `What is the plan for energy class ${selectedBrf.energyClass}?`,
+                            lang === 'sv' ? 'Finns det några beslutade avgiftshöjningar?' : 'Are there any decided fee increases?'
+                          ].map((q, i) => (
+                            <li key={i} className="flex gap-3 items-start text-sm opacity-70 italic">
+                              <span className="font-mono text-sigvik-ink font-bold">{i+1}.</span>
+                              <span>{q}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      {/* Mobile Flag Error */}
+                      <div className="md:hidden mt-12 pt-8 border-t border-gray-100 text-center">
+                        <p className="text-sm opacity-60 mb-2">{lang === 'sv' ? 'Ser du ett fel i datan?' : 'See an error in the data?'}</p>
+                        <button 
+                          onClick={() => setShowF3Modal('flag')}
+                          className="text-sigvik-accent font-bold uppercase text-xs tracking-widest"
+                        >
+                          {lang === 'sv' ? 'Flagga fel' : 'Flag error'}
+                        </button>
+                      </div>
+
+                      <div className="mt-12 flex flex-col md:flex-row gap-4">
+                        <button className="w-full md:flex-1 bg-sigvik-ink text-sigvik-bg py-4 font-bold uppercase tracking-widest text-xs">
+                          {lang === 'sv' ? 'Ladda ner fullständig rapport' : 'Download Full Report'}
+                        </button>
+                        <p className="text-[10px] opacity-40 text-center md:text-left md:max-w-[200px]">
+                          {lang === 'sv' ? 'Rapporten inkluderar iXBRL-data och fullständig historik.' : 'Report includes iXBRL data and full history.'}
                         </p>
                       </div>
                     </div>
                   </div>
-                  
-                  {/* Persona A - Questions for Broker */}
-                  <div className="mt-8 pt-8 border-t border-sigvik-line/5">
-                    <h5 className="text-[10px] font-bold uppercase opacity-40 mb-4">{lang === 'sv' ? 'Tre frågor att ställa till mäklaren' : 'Three questions to ask the broker'}</h5>
-                    <ul className="space-y-3">
-                      {[
-                        lang === 'sv' ? 'Finns det en aktuell underhållsplan och när uppdaterades den senast?' : 'Is there a current maintenance plan and when was it last updated?',
-                        lang === 'sv' ? `Hur ser planen ut för att hantera energiklass ${selectedBrf.energyClass} fram till 2030?` : `What is the plan for handling energy class ${selectedBrf.energyClass} until 2030?`,
-                        lang === 'sv' ? 'Finns det några beslutade avgiftshöjningar som inte syns i nuvarande månadsavgift?' : 'Are there any decided fee increases that are not reflected in the current monthly fee?'
-                      ].map((q, i) => (
-                        <li key={i} className="flex gap-3 items-start text-sm opacity-70 italic">
-                          <span className="font-mono text-sigvik-ink font-bold">{i+1}.</span>
-                          <span>{q}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                </motion.div>
+              ) : (
+                <div className="hidden md:block h-full space-y-8">
+                  {persona !== 'buyer' ? (
+                    <>
+                      <div className="p-8 bg-white border border-sigvik-line shadow-sm">
+                        <h4 className="col-header mb-6">{t.market_overview}</h4>
+                        <div className="space-y-6">
+                          <div className="flex justify-between items-end border-b border-sigvik-line/5 pb-4">
+                            <span className="text-sm opacity-50">{t.total_brfs} (Malmö)</span>
+                            <span className="font-mono text-xl font-bold">2,104</span>
+                          </div>
+                          <div className="flex justify-between items-end border-b border-sigvik-line/5 pb-4">
+                            <span className="text-sm opacity-50">{t.avg_financial_score}</span>
+                            <span className="font-mono text-xl font-bold">71.2</span>
+                          </div>
+                          <div className="flex justify-between items-end border-b border-sigvik-line/5 pb-4">
+                            <span className="text-sm opacity-50">{lang === 'sv' ? 'Aktiva signaler (24h)' : 'Active signals (24h)'}</span>
+                            <span className="font-mono text-xl font-bold text-sigvik-accent">142</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-8 bg-sigvik-ink text-sigvik-bg">
+                        <h4 className="col-header text-sigvik-bg/50 mb-6">{t.top_districts}</h4>
+                        <div className="grid grid-cols-2 gap-4 font-mono text-xs">
+                          <div className="flex justify-between opacity-80"><span>Västra Hamnen</span><span>84.2</span></div>
+                          <div className="flex justify-between opacity-80"><span>Slottsstaden</span><span>79.1</span></div>
+                          <div className="flex justify-between opacity-80"><span>Limhamn</span><span>76.5</span></div>
+                          <div className="flex justify-between opacity-80"><span>Möllevången</span><span>62.8</span></div>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="p-12 border-2 border-dashed border-sigvik-line/10 text-center bg-white/50 h-full flex flex-col items-center justify-center">
+                      <Building2 size={48} className="mb-4 opacity-10" />
+                      <p className="font-serif italic text-xl opacity-40 mb-4">{t.select_brf}</p>
+                      <p className="text-xs opacity-30 max-w-xs mx-auto leading-relaxed">
+                        {lang === 'sv' 
+                          ? 'Välj en förening i listan till vänster för att se detaljerad information om ekonomi, underhåll och historik.' 
+                          : 'Select an association from the list on the left to see detailed information about finances, maintenance, and history.'}
+                      </p>
+                    </div>
+                  )}
                 </div>
-              </motion.div>
-            ) : (
-              <div className="h-full space-y-8">
-                {persona !== 'buyer' ? (
-                  <>
-                    <div className="p-8 bg-white border border-sigvik-line shadow-sm">
-                      <h4 className="col-header mb-6">{t.market_overview}</h4>
-                      <div className="space-y-6">
-                        <div className="flex justify-between items-end border-b border-sigvik-line/5 pb-4">
-                          <span className="text-sm opacity-50">{t.total_brfs} (Malmö)</span>
-                          <span className="font-mono text-xl font-bold">2,104</span>
-                        </div>
-                        <div className="flex justify-between items-end border-b border-sigvik-line/5 pb-4">
-                          <span className="text-sm opacity-50">{t.avg_financial_score}</span>
-                          <span className="font-mono text-xl font-bold">71.2</span>
-                        </div>
-                        <div className="flex justify-between items-end border-b border-sigvik-line/5 pb-4">
-                          <span className="text-sm opacity-50">{lang === 'sv' ? 'Aktiva signaler (24h)' : 'Active signals (24h)'}</span>
-                          <span className="font-mono text-xl font-bold text-sigvik-accent">142</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="p-8 bg-sigvik-ink text-sigvik-bg">
-                      <h4 className="col-header text-sigvik-bg/50 mb-6">{t.top_districts}</h4>
-                      <div className="grid grid-cols-2 gap-4 font-mono text-xs">
-                        <div className="flex justify-between opacity-80"><span>Västra Hamnen</span><span>84.2</span></div>
-                        <div className="flex justify-between opacity-80"><span>Slottsstaden</span><span>79.1</span></div>
-                        <div className="flex justify-between opacity-80"><span>Limhamn</span><span>76.5</span></div>
-                        <div className="flex justify-between opacity-80"><span>Möllevången</span><span>62.8</span></div>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="p-12 border-2 border-dashed border-sigvik-line/10 text-center bg-white/50 h-full flex flex-col items-center justify-center">
-                    <Building2 size={48} className="mb-4 opacity-10" />
-                    <p className="font-serif italic text-xl opacity-40 mb-4">{t.select_brf}</p>
-                    <p className="text-xs opacity-30 max-w-xs mx-auto leading-relaxed">
-                      {lang === 'sv' 
-                        ? 'Välj en förening i listan till vänster för att se detaljerad information om ekonomi, underhåll och historik.' 
-                        : 'Select an association from the list on the left to see detailed information about finances, maintenance, and history.'}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-          </AnimatePresence>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
 
@@ -1300,9 +1525,16 @@ export default function App() {
         setLang={setLang} 
         setShowInfo={setShowInfo}
       />
-      <main className="flex-1">
+      <main className="flex-1 pb-14 md:pb-0">
         {activeTab === 'public' ? <PublicView lang={lang} /> : <ContractorDashboard lang={lang} />}
       </main>
+
+      <BottomNav 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        setShowInfo={setShowInfo} 
+        lang={lang} 
+      />
 
       <AnimatePresence>
         {showInfo && <InfoModal lang={lang} onClose={() => setShowInfo(false)} />}
