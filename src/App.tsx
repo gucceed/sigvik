@@ -34,9 +34,12 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
-import { MOCK_BRFS, BRF, Signal, Language, TRANSLATIONS } from './types';
+import { BRF, Signal, Language, TRANSLATIONS, BRFDetail, Municipality, Stats } from './types';
+import { MOCK_BRFS, MOCK_MUNICIPALITIES, MOCK_STATS, getMockBrfDetail, MOCK_SIGNALS } from './mockData';
 
 import { List } from 'react-window';
+
+const API_BASE = "https://YOUR_CLOUD_RUN_URL";
 
 // --- Components ---
 
@@ -211,15 +214,15 @@ const BrfCard = ({ brf, isSelected, onClick, lang }: { brf: BRF, isSelected: boo
         <div className="flex-1 min-w-0">
           <h3 className="font-bold truncate text-sm uppercase tracking-tight">{brf.name}</h3>
           <p className={cn("text-[10px] font-mono uppercase opacity-60 truncate", isSelected ? "text-white/60" : "text-sigvik-ink/60")}>
-            {brf.address}, {brf.district}
+            {brf.street}, {brf.municipality_name}
           </p>
         </div>
         <div className="flex flex-col items-end">
           <div className={cn(
             "text-lg font-mono font-bold",
-            isSelected ? "text-white" : brf.intentScore > 70 ? "text-green-600" : brf.intentScore > 40 ? "text-amber-600" : "text-red-600"
+            isSelected ? "text-white" : brf.intent_score > 70 ? "text-green-600" : brf.intent_score > 40 ? "text-amber-600" : "text-red-600"
           )}>
-            {brf.intentScore}
+            {Math.round(brf.intent_score)}
           </div>
           <div className={cn("text-[8px] font-mono uppercase opacity-50", isSelected ? "text-white/50" : "text-sigvik-ink/50")}>
             {t.intent_score}
@@ -231,19 +234,19 @@ const BrfCard = ({ brf, isSelected, onClick, lang }: { brf: BRF, isSelected: boo
         <div className="flex gap-3">
           <div className="flex flex-col">
             <span className={cn("text-[8px] font-mono uppercase opacity-50", isSelected ? "text-white/50" : "text-sigvik-ink/50")}>{t.apartments}</span>
-            <span className="text-xs font-bold">{brf.apartments}</span>
+            <span className="text-xs font-bold">{brf.num_apartments}</span>
           </div>
           <div className="flex flex-col">
             <span className={cn("text-[8px] font-mono uppercase opacity-50", isSelected ? "text-white/50" : "text-sigvik-ink/50")}>{t.built_year}</span>
-            <span className="text-xs font-bold">{brf.builtYear}</span>
+            <span className="text-xs font-bold">{brf.building_year}</span>
           </div>
         </div>
-        {brf.predictedProject && (
+        {brf.mentions_stammar && (
           <div className={cn(
             "px-2 py-0.5 rounded-full text-[8px] font-mono uppercase font-bold border",
             isSelected ? "bg-white/10 border-white/20 text-white" : "bg-sigvik-ink/5 border-sigvik-ink/10 text-sigvik-ink"
           )}>
-            {brf.predictedProject}
+            Stambyte {brf.stammar_year_mentioned}
           </div>
         )}
       </div>
@@ -260,8 +263,8 @@ const BrfRow = ({ index, style, filtered, selectedBrfId, setSelectedBrfId, lang 
     <div style={style}>
       <BrfCard 
         brf={brf} 
-        isSelected={selectedBrfId === brf.id} 
-        onClick={() => setSelectedBrfId(brf.id)} 
+        isSelected={selectedBrfId === brf.orgnr} 
+        onClick={() => setSelectedBrfId(brf.orgnr)} 
         lang={lang}
       />
     </div>
@@ -280,6 +283,119 @@ const PublicView = ({ lang }: { lang: Language }) => {
   const [scrollCount, setScrollCount] = useState(0);
   const [showNavGuidance, setShowNavGuidance] = useState<string | null>(null);
 
+  // Mock Data States
+  const [brfs, setBrfs] = useState<BRF[]>(MOCK_BRFS);
+  const [totalBrfs, setTotalBrfs] = useState(MOCK_BRFS.length);
+  const [municipalities, setMunicipalities] = useState<Municipality[]>(MOCK_MUNICIPALITIES);
+  const [stats, setStats] = useState<Stats | null>(MOCK_STATS);
+  const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedBrfDetail, setSelectedBrfDetail] = useState<BRFDetail | null>(null);
+
+  // Pagination & Filtering
+  const [offset, setOffset] = useState(0);
+  const limit = 50;
+  const [filterMunicipality, setFilterMunicipality] = useState<string>('');
+  const [minScore, setMinScore] = useState(0);
+  const [sortBy, setSortBy] = useState<'name' | 'newest' | 'debt_low' | 'debt_high' | 'year_oldest' | 'year_newest'>('name');
+
+  // Fetch Stats & Municipalities
+  useEffect(() => {
+    const fetchMeta = async () => {
+      try {
+        const [statsRes, muniRes] = await Promise.all([
+          fetch(`${API_BASE}/api/stats`),
+          fetch(`${API_BASE}/api/municipalities`)
+        ]);
+        if (statsRes.ok) setStats(await statsRes.json());
+        if (muniRes.ok) setMunicipalities(await muniRes.json());
+      } catch (err) {
+        console.error("Meta fetch failed", err);
+      }
+    };
+    if (API_BASE && !API_BASE.includes("YOUR_CLOUD_RUN_URL")) {
+      fetchMeta();
+    }
+  }, []);
+
+  // Fetch BRFs
+  useEffect(() => {
+    const fetchBrfs = async () => {
+      if (!API_BASE || API_BASE.includes("YOUR_CLOUD_RUN_URL")) {
+        // Fallback to client-side filtering if API not configured
+        let result = [...MOCK_BRFS];
+        if (search) {
+          const q = search.toLowerCase();
+          result = result.filter(b => b.name.toLowerCase().includes(q) || b.street.toLowerCase().includes(q));
+        }
+        if (filterMunicipality) {
+          const muni = MOCK_MUNICIPALITIES.find(m => m.kommunkod === filterMunicipality);
+          if (muni) result = result.filter(b => b.municipality_name === muni.name);
+        }
+        if (minScore > 0) result = result.filter(b => b.intent_score >= minScore);
+        
+        setTotalBrfs(result.length);
+        setBrfs(result.slice(offset, offset + limit));
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+      try {
+        const params = new URLSearchParams({
+          limit: limit.toString(),
+          offset: offset.toString(),
+          q: search,
+          municipality: filterMunicipality,
+          min_score: minScore.toString(),
+          sort: sortBy
+        });
+        const res = await fetch(`${API_BASE}/api/brfs?${params.toString()}`);
+        if (!res.ok) throw new Error("Fetch failed");
+        const data = await res.json();
+        setBrfs(data.brfs);
+        setTotalBrfs(data.total);
+      } catch (err) {
+        setError(lang === 'sv' ? 'Kunde inte hämta data. Försök igen senare.' : 'Could not fetch data. Please try again later.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    const debounce = setTimeout(fetchBrfs, 300);
+    return () => clearTimeout(debounce);
+  }, [offset, search, filterMunicipality, minScore, sortBy, lang]);
+
+  // Fetch Detail
+  useEffect(() => {
+    if (!selectedBrfId) {
+      setSelectedBrfDetail(null);
+      return;
+    }
+    if (!API_BASE || API_BASE.includes("YOUR_CLOUD_RUN_URL")) {
+      setSelectedBrfDetail(getMockBrfDetail(selectedBrfId));
+      return;
+    }
+
+    const fetchDetail = async () => {
+      setDetailLoading(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/brfs/${selectedBrfId}`);
+        if (!res.ok) throw new Error("Detail fetch failed");
+        const data = await res.json();
+        setSelectedBrfDetail(data);
+      } catch (err) {
+        console.error(err);
+        // Fallback to mock on error
+        setSelectedBrfDetail(getMockBrfDetail(selectedBrfId));
+      } finally {
+        setDetailLoading(false);
+      }
+    };
+    fetchDetail();
+  }, [selectedBrfId]);
+
   // Navigation Guidance Logic
   useEffect(() => {
     const handleScroll = () => {
@@ -294,57 +410,19 @@ const PublicView = ({ lang }: { lang: Language }) => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [scrollCount, selectedBrfId, lang]);
   
-  // Phase 2 Filters
-  const [filterMunicipality, setFilterMunicipality] = useState<string[]>([]);
-  const [filterApartments, setFilterApartments] = useState<[number, number]>([32, 180]);
-  const [filterBuiltYear, setFilterBuiltYear] = useState<string[]>([]);
-  const [filterProjectType, setFilterProjectType] = useState<string[]>([]);
-  const [filterFeeTrajectory, setFilterFeeTrajectory] = useState<string[]>([]);
-  const [filterDebt, setFilterDebt] = useState<[number, number]>([45000, 185000]);
-  const [filterEnergyClass, setFilterEnergyClass] = useState<string[]>([]);
-  const [filterMaintenanceStatus, setFilterMaintenanceStatus] = useState<string[]>([]);
-  
-  const [sortBy, setSortBy] = useState<'name' | 'newest' | 'debt_low' | 'debt_high' | 'year_oldest' | 'year_newest'>('name');
-
   const filtered = useMemo(() => {
-    return MOCK_BRFS.filter(b => {
-      const matchesSearch = b.name.toLowerCase().includes(search.toLowerCase()) || 
-                           b.address.toLowerCase().includes(search.toLowerCase());
-      
-      const matchesMunicipality = filterMunicipality.length === 0 || filterMunicipality.includes(b.district);
-      const matchesApartments = b.apartments >= filterApartments[0] && b.apartments <= filterApartments[1];
-      
-      let matchesYear = true;
-      if (filterBuiltYear.length > 0) {
-        matchesYear = filterBuiltYear.some(range => {
-          if (range === 'pre-1960') return b.builtYear < 1960;
-          if (range === '1960-1985') return b.builtYear >= 1960 && b.builtYear <= 1985;
-          if (range === '1986-2000') return b.builtYear >= 1986 && b.builtYear <= 2000;
-          if (range === '2001+') return b.builtYear >= 2001;
-          return false;
-        });
-      }
-      
-      const matchesProject = filterProjectType.length === 0 || (b.predictedProject && filterProjectType.includes(b.predictedProject));
-      const matchesFee = filterFeeTrajectory.length === 0 || filterFeeTrajectory.includes(b.feeTrajectory);
-      const matchesDebt = b.debtPerUnit >= filterDebt[0] && b.debtPerUnit <= filterDebt[1];
-      const matchesEnergy = filterEnergyClass.length === 0 || filterEnergyClass.includes(b.energyClass);
-      const matchesMaintenance = filterMaintenanceStatus.length === 0 || filterMaintenanceStatus.includes(b.maintenancePlanStatus);
-
-      return matchesSearch && matchesMunicipality && matchesApartments && matchesYear && 
-             matchesProject && matchesFee && matchesDebt && matchesEnergy && matchesMaintenance;
-    }).sort((a, b) => {
+    // Sorting is handled client-side for now or we could move to API
+    return [...brfs].sort((a, b) => {
       if (sortBy === 'name') return a.name.localeCompare(b.name);
-      if (sortBy === 'newest') return 0; // Mock newest
-      if (sortBy === 'debt_low') return a.debtPerUnit - b.debtPerUnit;
-      if (sortBy === 'debt_high') return b.debtPerUnit - a.debtPerUnit;
-      if (sortBy === 'year_oldest') return a.builtYear - b.builtYear;
-      if (sortBy === 'year_newest') return b.builtYear - a.builtYear;
+      if (sortBy === 'debt_low') return a.lan_change_pct - b.lan_change_pct; // Mocking debt low with lan change for now if field missing
+      if (sortBy === 'debt_high') return b.lan_change_pct - a.lan_change_pct;
+      if (sortBy === 'year_oldest') return a.building_year - b.building_year;
+      if (sortBy === 'year_newest') return b.building_year - a.building_year;
       return 0;
     });
-  }, [search, filterMunicipality, filterApartments, filterBuiltYear, filterProjectType, filterFeeTrajectory, filterDebt, filterEnergyClass, filterMaintenanceStatus, sortBy]);
+  }, [brfs, sortBy]);
 
-  const selectedBrf = MOCK_BRFS.find(b => b.id === selectedBrfId);
+  const selectedBrf = selectedBrfDetail?.brf || brfs.find(b => b.orgnr === selectedBrfId);
 
   useEffect(() => {
     if (filtered.length > 50) {
@@ -450,15 +528,15 @@ const PublicView = ({ lang }: { lang: Language }) => {
       <div className="flex md:hidden mb-4 bg-gray-50 border-y border-gray-100 overflow-x-auto no-scrollbar">
         <div className="flex-1 border-r border-gray-200 py-3 px-4 min-w-[120px]">
           <span className="text-[10px] text-gray-500 uppercase block mb-1">{t.total_brfs}</span>
-          <span className="text-lg font-semibold text-sigvik-accent">14,204</span>
+          <span className="text-lg font-semibold text-sigvik-accent">{stats?.brfs_total.toLocaleString() || '...'}</span>
         </div>
         <div className="flex-1 border-r border-gray-200 py-3 px-4 min-w-[120px]">
           <span className="text-[10px] text-gray-500 uppercase block mb-1">{t.avg_financial_score}</span>
-          <span className="text-lg font-semibold text-sigvik-accent">68.4</span>
+          <span className="text-lg font-semibold text-sigvik-accent">{stats?.avg_score || '...'}</span>
         </div>
         <div className="flex-1 py-3 px-4 min-w-[120px]">
           <span className="text-[10px] text-gray-500 uppercase block mb-1">{lang === 'sv' ? 'Aktiva signaler' : 'Active signals'}</span>
-          <span className="text-lg font-semibold text-sigvik-accent">142</span>
+          <span className="text-lg font-semibold text-sigvik-accent">{stats?.high_signal_count || '...'}</span>
         </div>
       </div>
 
@@ -482,11 +560,11 @@ const PublicView = ({ lang }: { lang: Language }) => {
         <div className="hidden lg:flex gap-12 border-l border-sigvik-line/10 pl-12 py-2">
           <div>
             <span className="col-header block mb-1">{t.total_brfs}</span>
-            <span className="text-2xl font-mono font-bold tracking-tighter">14,204</span>
+            <span className="text-2xl font-mono font-bold tracking-tighter">{stats?.brfs_total.toLocaleString() || '...'}</span>
           </div>
           <div>
             <span className="col-header block mb-1">{t.avg_financial_score}</span>
-            <span className="text-2xl font-mono font-bold tracking-tighter">68.4</span>
+            <span className="text-2xl font-mono font-bold tracking-tighter">{stats?.avg_score || '...'}</span>
           </div>
         </div>
       </div>
@@ -540,163 +618,114 @@ const PublicView = ({ lang }: { lang: Language }) => {
           selectedBrfId && "translate-x-[-100%] md:translate-x-0"
         )}>
           <div className="md:col-span-1 space-y-8">
-            {/* Filters Section - Hidden on mobile for now or moved */}
+            {/* Filters Section */}
             <div className="hidden md:block bg-white border border-sigvik-line p-6 space-y-6">
               <h3 className="col-header border-b border-sigvik-line/10 pb-2 mb-4">Filter</h3>
               
               <div className="space-y-4">
                 <div>
                   <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_municipality}</label>
-                  <div className="flex flex-wrap gap-2">
-                    {['Husie', 'Limhamn', 'Centrum', 'Västra Hamnen', 'Hyllie', 'Segevång', 'Oxie', 'Rosengård', 'Fosie', 'Kirseberg'].map(d => (
-                      <button 
-                        key={d}
-                        onClick={() => setFilterMunicipality(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])}
-                        className={cn("px-2 py-1 text-[10px] border transition-all", filterMunicipality.includes(d) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
-                      >
-                        {d}
-                      </button>
+                  <select 
+                    className="w-full bg-sigvik-bg border border-sigvik-line/20 p-2 text-[10px] font-bold uppercase outline-none"
+                    value={filterMunicipality}
+                    onChange={(e) => { setFilterMunicipality(e.target.value); setOffset(0); }}
+                  >
+                    <option value="">{lang === 'sv' ? 'Alla kommuner' : 'All municipalities'}</option>
+                    {municipalities.map(m => (
+                      <option key={m.kommunkod} value={m.kommunkod}>{m.name}</option>
                     ))}
-                  </div>
+                  </select>
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_apartments} (32–180)</label>
+                  <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.intent_score} (Min: {minScore})</label>
                   <input 
-                    type="range" min="32" max="180" 
-                    value={filterApartments[1]} 
-                    onChange={(e) => setFilterApartments([32, parseInt(e.target.value)])}
+                    type="range" min="0" max="100" 
+                    value={minScore} 
+                    onChange={(e) => { setMinScore(parseInt(e.target.value)); setOffset(0); }}
                     className="w-full accent-sigvik-ink"
                   />
                   <div className="flex justify-between text-[10px] font-mono opacity-40 mt-1">
-                    <span>32</span>
-                    <span>{filterApartments[1]}</span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_built_year}</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {['pre-1960', '1960-1985', '1986-2000', '2001+'].map(range => (
-                      <button 
-                        key={range}
-                        onClick={() => setFilterBuiltYear(prev => prev.includes(range) ? prev.filter(x => x !== range) : [...prev, range])}
-                        className={cn("px-2 py-1 text-[10px] border transition-all", filterBuiltYear.includes(range) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
-                      >
-                        {range}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_project_type}</label>
-                  <div className="flex flex-wrap gap-2">
-                    {['Stambyte', 'Fasad', 'Fönster', 'Tak', 'Energi', 'Hiss'].map(p => (
-                      <button 
-                        key={p}
-                        onClick={() => setFilterProjectType(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])}
-                        className={cn("px-2 py-1 text-[10px] border transition-all", filterProjectType.includes(p) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
-                      >
-                        {p}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_fee_trajectory}</label>
-                  <div className="flex flex-wrap gap-2">
-                    {['Stable', 'Rising 1-5%', 'Rising 6-15%', 'Rising 16%+', 'Falling'].map(f => (
-                      <button 
-                        key={f}
-                        onClick={() => setFilterFeeTrajectory(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f])}
-                        className={cn("px-2 py-1 text-[10px] border transition-all", filterFeeTrajectory.includes(f) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
-                      >
-                        {f}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_debt} (45k–185k)</label>
-                  <input 
-                    type="range" min="45000" max="185000" step="5000"
-                    value={filterDebt[1]} 
-                    onChange={(e) => setFilterDebt([45000, parseInt(e.target.value)])}
-                    className="w-full accent-sigvik-ink"
-                  />
-                  <div className="flex justify-between text-[10px] font-mono opacity-40 mt-1">
-                    <span>45k</span>
-                    <span>{Math.round(filterDebt[1]/1000)}k</span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_maintenance_status}</label>
-                  <div className="flex flex-wrap gap-2">
-                    {['Aktuell', 'Föråldrad', 'Saknas', 'Okänd'].map(s => (
-                      <button 
-                        key={s}
-                        onClick={() => setFilterMaintenanceStatus(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])}
-                        className={cn("px-2 py-1 text-[10px] border transition-all", filterMaintenanceStatus.includes(s) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
-                      >
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.filter_energy_class}</label>
-                  <div className="flex flex-wrap gap-2">
-                    {['A', 'B', 'C', 'D', 'E', 'F', 'G'].map(c => (
-                      <button 
-                        key={c}
-                        onClick={() => setFilterEnergyClass(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c])}
-                        className={cn("w-6 h-6 flex items-center justify-center text-[10px] border transition-all", filterEnergyClass.includes(c) ? "bg-sigvik-ink text-sigvik-bg border-sigvik-ink" : "border-sigvik-line/20 opacity-60 hover:opacity-100")}
-                      >
-                        {c}
-                      </button>
-                    ))}
+                    <span>0</span>
+                    <span>100</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div>
-              <div className="flex justify-between items-center mb-2 px-4 md:px-0">
-                <span className="col-header">{t.search_results}</span>
-                <div className="flex gap-4 md:hidden">
-                  <button onClick={() => setShowF3Modal('add')} className="p-2 text-sigvik-accent">
-                    <Plus size={20} />
-                  </button>
-                  <button onClick={() => setShowF3Modal('flag')} className="p-2 text-sigvik-accent">
-                    <AlertTriangle size={20} />
-                  </button>
+            <div className="md:col-span-1 flex flex-col bg-white border border-sigvik-line h-[calc(100vh-280px)] md:h-[calc(100vh-200px)]">
+              <div className="p-4 border-b border-sigvik-line bg-sigvik-bg/10 flex justify-between items-center">
+                <span className="col-header">{t.search_results} ({totalBrfs})</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase opacity-40">Sort:</span>
+                  <select 
+                    className="bg-transparent text-[10px] font-bold uppercase outline-none"
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as any)}
+                  >
+                    <option value="name">A-Ö</option>
+                    <option value="debt_low">{t.debt_per_unit} (Low)</option>
+                    <option value="debt_high">{t.debt_per_unit} (High)</option>
+                    <option value="year_oldest">{t.built_year} (Oldest)</option>
+                    <option value="year_newest">{t.built_year} (Newest)</option>
+                  </select>
                 </div>
               </div>
-              <div className="divide-y divide-gray-100 md:space-y-2 md:divide-y-0">
-                {filtered.length > 50 ? (
+              
+              <div className="flex-1 relative">
+                {loading ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="w-6 h-6 border-2 border-sigvik-ink border-t-transparent rounded-full animate-spin" />
+                      <span className="text-[10px] font-mono uppercase opacity-40">{t.loading}</span>
+                    </div>
+                  </div>
+                ) : error ? (
+                  <div className="absolute inset-0 flex items-center justify-center p-8 text-center">
+                    <p className="text-xs text-red-500 font-mono uppercase">{error}</p>
+                  </div>
+                ) : filtered.length === 0 ? (
+                  <div className="absolute inset-0 flex items-center justify-center p-8 text-center">
+                    <p className="text-xs opacity-40 font-mono uppercase">Inga föreningar hittades</p>
+                  </div>
+                ) : (
                   <List
                     rowCount={filtered.length}
-                    rowHeight={100}
-                    rowProps={{ filtered, selectedBrfId, setSelectedBrfId, lang }}
+                    rowHeight={90}
+                    rowProps={{
+                      filtered,
+                      selectedBrfId,
+                      setSelectedBrfId,
+                      lang
+                    }}
                     rowComponent={BrfRow}
-                    style={{ height: window.innerWidth < 768 ? window.innerHeight - 250 : 600, width: '100%' }}
+                    style={{ 
+                      height: window.innerHeight - (window.innerWidth < 768 ? 280 : 200),
+                      width: '100%'
+                    }}
                   />
-                ) : (
-                  filtered.map(brf => (
-                    <BrfCard 
-                      key={brf.id}
-                      brf={brf} 
-                      isSelected={selectedBrfId === brf.id} 
-                      onClick={() => setSelectedBrfId(brf.id)} 
-                      lang={lang}
-                    />
-                  ))
                 )}
+              </div>
+
+              {/* Pagination Controls */}
+              <div className="p-3 border-t border-sigvik-line bg-sigvik-bg/5 flex justify-between items-center">
+                <button 
+                  disabled={offset === 0 || loading}
+                  onClick={() => setOffset(Math.max(0, offset - limit))}
+                  className="p-2 hover:bg-sigvik-ink/5 disabled:opacity-20 transition-opacity"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <span className="text-[10px] font-mono opacity-40 uppercase">
+                  {offset + 1} - {Math.min(offset + limit, totalBrfs)} av {totalBrfs}
+                </span>
+                <button 
+                  disabled={offset + limit >= totalBrfs || loading}
+                  onClick={() => setOffset(offset + limit)}
+                  className="p-2 hover:bg-sigvik-ink/5 disabled:opacity-20 transition-opacity"
+                >
+                  <ChevronRight size={16} />
+                </button>
               </div>
             </div>
 
@@ -745,261 +774,241 @@ const PublicView = ({ lang }: { lang: Language }) => {
                   </div>
 
                   <div className="flex-1 overflow-y-auto p-4 md:p-8">
-                    <div className="flex flex-col md:flex-row justify-between items-start mb-8 gap-6">
-                      <div>
-                        <h3 className="text-2xl md:text-3xl font-bold uppercase tracking-tighter">{selectedBrf.name}</h3>
-                        <p className="font-mono text-sm opacity-50">{selectedBrf.address}, {selectedBrf.district}</p>
-                        <div className="flex gap-2 mt-2">
-                          <span className="px-2 py-0.5 bg-sigvik-bg text-[8px] font-bold uppercase border border-sigvik-line/10">{t.verified_registry}</span>
-                          {selectedBrf.maintenancePlanStatus === 'Aktuell' && <span className="px-2 py-0.5 bg-green-50 text-green-700 text-[8px] font-bold uppercase border border-green-200">Verifierad — community</span>}
+                    {detailLoading ? (
+                      <div className="h-full flex items-center justify-center">
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="w-8 h-8 border-2 border-sigvik-ink border-t-transparent rounded-full animate-spin" />
+                          <span className="text-xs font-mono uppercase opacity-40">{t.loading}</span>
                         </div>
                       </div>
-                      <div className="flex gap-8 w-full md:w-auto justify-between md:justify-start border-t border-gray-100 pt-4 md:border-none md:pt-0">
-                        <ScoreBadge label={t.financial_health} score={selectedBrf.financialScore} />
-                        <ScoreBadge label={t.maintenance_liability} score={selectedBrf.maintenanceLiability} />
-                      </div>
-                    </div>
-
-                    {/* Board Member Callout */}
-                    {persona === 'board' && (
-                      <div className="mb-8 p-4 bg-sigvik-accent/5 border border-sigvik-accent/20">
-                        <p className="text-xs font-bold uppercase text-sigvik-accent mb-2">
-                          {lang === 'sv' ? 'Stämmer inte datan?' : 'Is the data incorrect?'}
-                        </p>
-                        <p className="text-sm opacity-80 mb-3">
-                          {lang === 'sv' 
-                            ? 'Om du ser information som är felaktig eller saknas kan du flagga det direkt.' 
-                            : 'If you see information that is incorrect or missing, you can flag it directly.'}
-                        </p>
-                        <button 
-                          onClick={() => setShowF3Modal('flag')}
-                          className="text-[10px] font-bold uppercase tracking-widest underline hover:no-underline"
-                        >
-                          {t.flag_error}
-                        </button>
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8 mb-12">
-                      <div className="p-4 md:p-6 bg-sigvik-bg/30 border border-sigvik-line/5">
-                        <h4 className="col-header mb-4">{t.building_info}</h4>
-                        <div className="space-y-4 md:space-y-3">
-                          <div className="flex justify-between items-center md:items-start text-sm border-b border-gray-100 pb-4 md:border-none md:pb-0">
-                            <span className="opacity-50">{t.built_year}</span>
-                            <span className="font-mono font-semibold md:font-normal text-sigvik-accent md:text-inherit">{selectedBrf.builtYear}</span>
-                          </div>
-                          <div className="flex justify-between items-center md:items-start text-sm border-b border-gray-100 pb-4 md:border-none md:pb-0">
-                            <span className="opacity-50">{t.apartments}</span>
-                            <span className="font-mono font-semibold md:font-normal text-sigvik-accent md:text-inherit">{selectedBrf.apartments}</span>
-                          </div>
-                          <div className="flex justify-between items-center md:items-start text-sm border-b border-gray-100 pb-4 md:border-none md:pb-0">
-                            <span className="opacity-50">{t.municipality}</span>
-                            <span className="font-mono font-semibold md:font-normal text-sigvik-accent md:text-inherit">{selectedBrf.municipality}</span>
-                          </div>
-                          <div className="flex justify-between items-center md:items-start text-sm border-b border-gray-100 pb-4 md:border-none md:pb-0">
-                            <span className="opacity-50">{t.energy_class}</span>
-                            <div className="flex flex-col items-end gap-1">
-                              <span className="font-mono font-semibold md:font-normal text-sigvik-accent md:text-inherit">{selectedBrf.energyClass}</span>
-                              {persona === 'buyer' && (
-                                <span className="text-[10px] opacity-40 italic max-w-[150px] text-right">
-                                  {['E', 'F', 'G'].includes(selectedBrf.energyClass)
-                                    ? (lang === 'sv' ? 'Kan behöva investera i energieffektivisering före 2030.' : 'May need to invest in energy efficiency before 2030.')
-                                    : (lang === 'sv' ? 'God energiprestanda.' : 'Good energy performance.')}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex justify-between items-center md:items-start text-sm border-b border-gray-100 pb-4 md:border-none md:pb-0">
-                            <span className="opacity-50">{t.debt_per_unit}</span>
-                            <div className="flex flex-col items-end gap-1">
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono font-semibold md:font-normal text-sigvik-accent md:text-inherit">{selectedBrf.debtPerUnit.toLocaleString()} kr</span>
-                                <span className="px-1 py-0.5 bg-sigvik-ink/5 text-[6px] font-bold uppercase border border-sigvik-line/10" title="NLP Confidence: High">Hög</span>
-                              </div>
-                              <span className="text-[10px] opacity-40 italic">
-                                {selectedBrf.debtPerUnit < 100000 
-                                  ? (lang === 'sv' ? 'Normal skuldnivå.' : 'Normal debt level.')
-                                  : (lang === 'sv' ? 'Högre skuldnivå.' : 'Higher debt level.')}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex justify-between items-center md:items-start text-sm">
-                            <span className="opacity-50">{t.trajectory}</span>
-                            <div className="flex flex-col items-end gap-1">
-                              <span className="font-mono font-semibold md:font-normal text-sigvik-accent md:text-inherit">{selectedBrf.feeTrajectory}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="p-4 md:p-6 bg-sigvik-bg/30 border border-sigvik-line/5">
-                        <h4 className="col-header mb-4">{t.comparison}</h4>
-                        <div className="h-32">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={[
-                              { name: 'Avg', value: 65 },
-                              { name: selectedBrf.name, value: selectedBrf.financialScore }
-                            ]}>
-                              <XAxis dataKey="name" hide />
-                              <Tooltip />
-                              <Bar dataKey="value">
-                                { [0, 1].map((entry, index) => (
-                                  <Cell key={`cell-${index}`} fill={index === 1 ? '#141414' : '#14141444'} />
-                                ))}
-                              </Bar>
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                        <p className="mt-4 text-[10px] font-mono opacity-40 uppercase">
-                          {142 < 5 ? t.insufficient_comparable_data : t.sample_size.replace('{count}', '142')}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Association History Section */}
-                    {selectedBrf.history && (
-                      <div className="mb-12">
-                        <div className="flex justify-between items-end mb-6">
-                          <h4 className="col-header">{t.history_title}</h4>
-                          <div className="text-[10px] font-mono opacity-40 uppercase hidden md:block">
-                            {t.history_data_quality}: <span className="text-sigvik-ink font-bold">Hög (iXBRL)</span>
-                          </div>
-                        </div>
-                        
-                        {/* Desktop Table */}
-                        <div className="hidden md:block border border-sigvik-line/10 overflow-hidden">
-                          <table className="w-full text-left text-xs">
-                            <thead className="bg-sigvik-bg/50 border-b border-sigvik-line/10">
-                              <tr>
-                                <th className="p-3 font-bold uppercase tracking-wider">{t.history_year}</th>
-                                <th className="p-3 font-bold uppercase tracking-wider">{t.history_goal}</th>
-                                <th className="p-3 font-bold uppercase tracking-wider">{t.history_outcome}</th>
-                                <th className="p-3 font-bold uppercase tracking-wider">{t.history_status}</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-sigvik-line/5">
-                              {selectedBrf.history.map((item, i) => (
-                                <tr key={i} className="hover:bg-sigvik-bg/20 transition-colors">
-                                  <td className="p-3 font-mono">{item.year}</td>
-                                  <td className="p-3 opacity-80 italic">"{item.goal}"</td>
-                                  <td className="p-3 opacity-80">{item.outcome}</td>
-                                  <td className="p-3">
-                                    <span className={cn(
-                                      "px-2 py-0.5 text-[8px] font-bold uppercase border",
-                                      item.status === 'Uppfyllt' ? "bg-green-50 text-green-700 border-green-200" :
-                                      item.status === 'Ej uppfyllt' ? "bg-red-50 text-red-700 border-red-200" :
-                                      "bg-amber-50 text-amber-700 border-amber-200"
-                                    )}>
-                                      {item.status}
-                                    </span>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-
-                        {/* Mobile Cards */}
-                        <div className="md:hidden space-y-4">
-                          {selectedBrf.history.map((item, i) => (
-                            <div key={i} className="p-4 border border-gray-100 bg-gray-50/30 space-y-3">
-                              <div className="flex justify-between items-center">
-                                <span className="font-mono font-bold text-lg">{item.year}</span>
-                                <span className={cn(
-                                  "px-2 py-0.5 text-[8px] font-bold uppercase border",
-                                  item.status === 'Uppfyllt' ? "bg-green-50 text-green-700 border-green-200" :
-                                  item.status === 'Ej uppfyllt' ? "bg-red-50 text-red-700 border-red-200" :
-                                  "bg-amber-50 text-amber-700 border-amber-200"
-                                )}>
-                                  {item.status}
-                                </span>
-                              </div>
-                              <p className="text-sm italic opacity-80">"{item.goal}"</p>
-                              <p className="text-sm opacity-70">{item.outcome}</p>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+                    ) : (
+                      <>
+                        <div className="flex flex-col md:flex-row justify-between items-start mb-8 gap-6">
                           <div>
-                            <span className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.history_pattern}</span>
-                            <p className="text-sm italic opacity-70 leading-relaxed">
+                            <h3 className="text-2xl md:text-3xl font-bold uppercase tracking-tighter">{selectedBrf?.name}</h3>
+                            <p className="font-mono text-sm opacity-50">{selectedBrf?.street}, {selectedBrf?.municipality_name}</p>
+                            <div className="flex gap-2 mt-2">
+                              <span className="px-2 py-0.5 bg-sigvik-bg text-[8px] font-bold uppercase border border-sigvik-line/10">{t.verified_registry}</span>
+                              {selectedBrf?.mentions_stammar && <span className="px-2 py-0.5 bg-green-50 text-green-700 text-[8px] font-bold uppercase border border-green-200">Verifierad — community</span>}
+                            </div>
+                          </div>
+                          <div className="flex gap-8 w-full md:w-auto justify-between md:justify-start border-t border-gray-100 pt-4 md:border-none md:pt-0">
+                            <ScoreBadge label={t.financial_health} score={Math.round((selectedBrf?.intent_score || 0) * 0.8)} />
+                            <ScoreBadge label={t.maintenance_liability} score={Math.round((selectedBrf?.intent_score || 0) * 0.6)} />
+                          </div>
+                        </div>
+
+                        {/* Board Member Callout */}
+                        {persona === 'board' && (
+                          <div className="mb-8 p-4 bg-sigvik-accent/5 border border-sigvik-accent/20">
+                            <p className="text-xs font-bold uppercase text-sigvik-accent mb-2">
+                              {lang === 'sv' ? 'Stämmer inte datan?' : 'Is the data incorrect?'}
+                            </p>
+                            <p className="text-sm opacity-80 mb-3">
                               {lang === 'sv' 
-                                ? 'Föreningen uppvisar ett mönster av att prioritera akuta läckage framför planerade energibesparingsmål.'
-                                : 'The association shows a pattern of prioritizing acute leaks over planned energy saving goals.'}
+                                ? 'Om du ser information som är felaktig eller saknas kan du flagga det direkt.' 
+                                : 'If you see information that is incorrect or missing, you can flag it directly.'}
+                            </p>
+                            <button 
+                              onClick={() => setShowF3Modal('flag')}
+                              className="text-[10px] font-bold uppercase tracking-widest underline hover:no-underline"
+                            >
+                              {t.flag_error}
+                            </button>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8 mb-12">
+                          <div className="p-4 md:p-6 bg-sigvik-bg/30 border border-sigvik-line/5">
+                            <h4 className="col-header mb-4">{t.building_info}</h4>
+                            <div className="space-y-4 md:space-y-3">
+                              <div className="flex justify-between items-center md:items-start text-sm border-b border-gray-100 pb-4 md:border-none md:pb-0">
+                                <span className="opacity-50">{t.built_year}</span>
+                                <span className="font-mono font-semibold md:font-normal text-sigvik-accent md:text-inherit">{selectedBrf?.building_year}</span>
+                              </div>
+                              <div className="flex justify-between items-center md:items-start text-sm border-b border-gray-100 pb-4 md:border-none md:pb-0">
+                                <span className="opacity-50">{t.apartments}</span>
+                                <span className="font-mono font-semibold md:font-normal text-sigvik-accent md:text-inherit">{selectedBrf?.num_apartments}</span>
+                              </div>
+                              <div className="flex justify-between items-center md:items-start text-sm border-b border-gray-100 pb-4 md:border-none md:pb-0">
+                                <span className="opacity-50">{t.municipality}</span>
+                                <span className="font-mono font-semibold md:font-normal text-sigvik-accent md:text-inherit">{selectedBrf?.municipality_name}</span>
+                              </div>
+                              <div className="flex justify-between items-center md:items-start text-sm border-b border-gray-100 pb-4 md:border-none md:pb-0">
+                                <span className="opacity-50">{t.energy_class}</span>
+                                <div className="flex flex-col items-end gap-1">
+                                  <span className="font-mono font-semibold md:font-normal text-sigvik-accent md:text-inherit">{selectedBrf?.energiklass}</span>
+                                  {persona === 'buyer' && (
+                                    <span className="text-[10px] opacity-40 italic max-w-[150px] text-right">
+                                      {['E', 'F', 'G'].includes(selectedBrf?.energiklass || '')
+                                        ? (lang === 'sv' ? 'Kan behöva investera i energieffektivisering före 2030.' : 'May need to invest in energy efficiency before 2030.')
+                                        : (lang === 'sv' ? 'God energiprestanda.' : 'Good energy performance.')}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex justify-between items-center md:items-start text-sm border-b border-gray-100 pb-4 md:border-none md:pb-0">
+                                <span className="opacity-50">{t.trajectory}</span>
+                                <div className="flex flex-col items-end gap-1">
+                                  <span className="font-mono font-semibold md:font-normal text-sigvik-accent md:text-inherit">{selectedBrf?.avgift_change_pct}%</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="p-4 md:p-6 bg-sigvik-bg/30 border border-sigvik-line/5">
+                            <h4 className="col-header mb-4">{t.comparison}</h4>
+                            <div className="h-32">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={[
+                                  { name: 'Avg', value: 65 },
+                                  { name: selectedBrf?.name, value: Math.round(selectedBrf?.intent_score || 0) }
+                                ]}>
+                                  <XAxis dataKey="name" hide />
+                                  <Tooltip />
+                                  <Bar dataKey="value">
+                                    { [0, 1].map((entry, index) => (
+                                      <Cell key={`cell-${index}`} fill={index === 1 ? '#141414' : '#14141444'} />
+                                    ))}
+                                  </Bar>
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                            <p className="mt-4 text-[10px] font-mono opacity-40 uppercase">
+                              {142 < 5 ? t.insufficient_comparable_data : t.sample_size.replace('{count}', '142')}
                             </p>
                           </div>
-                          <div>
-                            <span className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.history_questions}</span>
-                            <ul className="text-sm space-y-2 opacity-70 list-disc pl-4">
-                              <li>{lang === 'sv' ? 'Finns en aktuell underhållsplan?' : 'Is there a current maintenance plan?'}</li>
-                              <li>{lang === 'sv' ? 'Vad är status för stambytet?' : 'What is the status of the pipe replacement?'}</li>
+                        </div>
+
+                        {/* Association History Section */}
+                        {selectedBrfDetail?.arsredovisningar && selectedBrfDetail.arsredovisningar.length > 0 && (
+                          <div className="mb-12">
+                            <div className="flex justify-between items-end mb-6">
+                              <h4 className="col-header">{t.history_title}</h4>
+                              <div className="text-[10px] font-mono opacity-40 uppercase hidden md:block">
+                                {t.history_data_quality}: <span className="text-sigvik-ink font-bold">Hög (iXBRL)</span>
+                              </div>
+                            </div>
+                            
+                            {/* Desktop Table */}
+                            <div className="hidden md:block border border-sigvik-line/10 overflow-hidden">
+                              <table className="w-full text-left text-xs">
+                                <thead className="bg-sigvik-bg/50 border-b border-sigvik-line/10">
+                                  <tr>
+                                    <th className="p-3 font-bold uppercase tracking-wider">{t.history_year}</th>
+                                    <th className="p-3 font-bold uppercase tracking-wider">Nettoomsättning</th>
+                                    <th className="p-3 font-bold uppercase tracking-wider">Resultat</th>
+                                    <th className="p-3 font-bold uppercase tracking-wider">Långfristiga skulder</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-sigvik-line/5">
+                                  {selectedBrfDetail.arsredovisningar.map((item, i) => (
+                                    <tr key={i} className="hover:bg-sigvik-bg/20 transition-colors">
+                                      <td className="p-3 font-mono">{item.fiscal_year}</td>
+                                      <td className="p-3 opacity-80">{item.nettoomsattning.toLocaleString()} kr</td>
+                                      <td className="p-3 opacity-80">{item.resultat_efter_finansiella_poster.toLocaleString()} kr</td>
+                                      <td className="p-3 opacity-80">{item.langfristiga_skulder.toLocaleString()} kr</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* Mobile Cards */}
+                            <div className="md:hidden space-y-4">
+                              {selectedBrfDetail.arsredovisningar.map((item, i) => (
+                                <div key={i} className="p-4 border border-gray-100 bg-gray-50/30 space-y-3">
+                                  <div className="flex justify-between items-center">
+                                    <span className="font-mono font-bold text-lg">{item.fiscal_year}</span>
+                                  </div>
+                                  <p className="text-sm opacity-70">Omsättning: {item.nettoomsattning.toLocaleString()} kr</p>
+                                  <p className="text-sm opacity-70">Skulder: {item.langfristiga_skulder.toLocaleString()} kr</p>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+                              <div>
+                                <span className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.history_pattern}</span>
+                                <p className="text-sm italic opacity-70 leading-relaxed">
+                                  {lang === 'sv' 
+                                    ? 'Föreningen uppvisar ett mönster av att prioritera akuta läckage framför planerade energibesparingsmål.'
+                                    : 'The association shows a pattern of prioritizing acute leaks over planned energy saving goals.'}
+                                </p>
+                              </div>
+                              <div>
+                                <span className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.history_questions}</span>
+                                <ul className="text-sm space-y-2 opacity-70 list-disc pl-4">
+                                  <li>{lang === 'sv' ? 'Finns en aktuell underhållsplan?' : 'Is there a current maintenance plan?'}</li>
+                                  <li>{lang === 'sv' ? 'Vad är status för stambytet?' : 'What is the status of the pipe replacement?'}</li>
+                                </ul>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        <p className="mt-8 text-[9px] opacity-40 leading-relaxed italic border-t border-sigvik-line/10 pt-4">
+                          {t.history_disclaimer}
+                        </p>
+
+                        <div className="border-t border-sigvik-line/10 pt-8">
+                          <h4 className="col-header mb-4">{t.recommended_actions}</h4>
+                          <div className="space-y-4">
+                            <div className="flex gap-4 items-start p-4 bg-amber-50 border border-amber-100">
+                              <div className="p-2 bg-amber-100 text-amber-700 rounded">
+                                <AlertTriangle size={18} />
+                              </div>
+                              <div>
+                                <p className="font-bold text-sm">
+                                  {lang === 'sv' ? 'Begär förtydligande om underhållsplan' : 'Request clarification on maintenance plan'}
+                                </p>
+                                <p className="text-xs opacity-60">
+                                  {lang === 'sv' 
+                                    ? 'Föreningens underhållsplan är markerad som föråldrad.' 
+                                    : 'The association\'s maintenance plan is marked as outdated.'}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Persona A - Questions for Broker */}
+                          <div className="mt-8 pt-8 border-t border-sigvik-line/5">
+                            <h5 className="text-[10px] font-bold uppercase opacity-40 mb-4">{lang === 'sv' ? 'Tre frågor att ställa till mäklaren' : 'Three questions to ask the broker'}</h5>
+                            <ul className="space-y-4 md:space-y-3">
+                              {[
+                                lang === 'sv' ? 'Finns det en aktuell underhållsplan?' : 'Is there a current maintenance plan?',
+                                lang === 'sv' ? `Hur ser planen ut för energiklass ${selectedBrf?.energiklass}?` : `What is the plan for energy class ${selectedBrf?.energiklass}?`,
+                                lang === 'sv' ? 'Finns det några beslutade avgiftshöjningar?' : 'Are there any decided fee increases?'
+                              ].map((q, i) => (
+                                <li key={i} className="flex gap-3 items-start text-sm opacity-70 italic">
+                                  <span className="font-mono text-sigvik-ink font-bold">{i+1}.</span>
+                                  <span>{q}</span>
+                                </li>
+                              ))}
                             </ul>
                           </div>
+
+                          {/* Mobile Flag Error */}
+                          <div className="md:hidden mt-12 pt-8 border-t border-gray-100 text-center">
+                            <p className="text-sm opacity-60 mb-2">{lang === 'sv' ? 'Ser du ett fel i datan?' : 'See an error in the data?'}</p>
+                            <button 
+                              onClick={() => setShowF3Modal('flag')}
+                              className="text-sigvik-accent font-bold uppercase text-xs tracking-widest"
+                            >
+                              {lang === 'sv' ? 'Flagga fel' : 'Flag error'}
+                            </button>
+                          </div>
+
+                          <div className="mt-12 flex flex-col md:flex-row gap-4">
+                            <button className="w-full md:flex-1 bg-sigvik-ink text-sigvik-bg py-4 font-bold uppercase tracking-widest text-xs">
+                              {lang === 'sv' ? 'Ladda ner fullständig rapport' : 'Download Full Report'}
+                            </button>
+                            <p className="text-[10px] opacity-40 text-center md:text-left md:max-w-[200px]">
+                              {lang === 'sv' ? 'Rapporten inkluderar iXBRL-data och fullständig historik.' : 'Report includes iXBRL data and full history.'}
+                            </p>
+                          </div>
                         </div>
-                      </div>
+                      </>
                     )}
-
-                    <p className="mt-8 text-[9px] opacity-40 leading-relaxed italic border-t border-sigvik-line/10 pt-4">
-                      {t.history_disclaimer}
-                    </p>
-
-                    <div className="border-t border-sigvik-line/10 pt-8">
-                      <h4 className="col-header mb-4">{t.recommended_actions}</h4>
-                      <div className="space-y-4">
-                        <div className="flex gap-4 items-start p-4 bg-amber-50 border border-amber-100">
-                          <div className="p-2 bg-amber-100 text-amber-700 rounded">
-                            <AlertTriangle size={18} />
-                          </div>
-                          <div>
-                            <p className="font-bold text-sm">
-                              {lang === 'sv' ? 'Begär förtydligande om underhållsplan' : 'Request clarification on maintenance plan'}
-                            </p>
-                            <p className="text-xs opacity-60">
-                              {lang === 'sv' 
-                                ? 'Föreningens underhållsplan är markerad som föråldrad.' 
-                                : 'The association\'s maintenance plan is marked as outdated.'}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* Persona A - Questions for Broker */}
-                      <div className="mt-8 pt-8 border-t border-sigvik-line/5">
-                        <h5 className="text-[10px] font-bold uppercase opacity-40 mb-4">{lang === 'sv' ? 'Tre frågor att ställa till mäklaren' : 'Three questions to ask the broker'}</h5>
-                        <ul className="space-y-4 md:space-y-3">
-                          {[
-                            lang === 'sv' ? 'Finns det en aktuell underhållsplan?' : 'Is there a current maintenance plan?',
-                            lang === 'sv' ? `Hur ser planen ut för energiklass ${selectedBrf.energyClass}?` : `What is the plan for energy class ${selectedBrf.energyClass}?`,
-                            lang === 'sv' ? 'Finns det några beslutade avgiftshöjningar?' : 'Are there any decided fee increases?'
-                          ].map((q, i) => (
-                            <li key={i} className="flex gap-3 items-start text-sm opacity-70 italic">
-                              <span className="font-mono text-sigvik-ink font-bold">{i+1}.</span>
-                              <span>{q}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-
-                      {/* Mobile Flag Error */}
-                      <div className="md:hidden mt-12 pt-8 border-t border-gray-100 text-center">
-                        <p className="text-sm opacity-60 mb-2">{lang === 'sv' ? 'Ser du ett fel i datan?' : 'See an error in the data?'}</p>
-                        <button 
-                          onClick={() => setShowF3Modal('flag')}
-                          className="text-sigvik-accent font-bold uppercase text-xs tracking-widest"
-                        >
-                          {lang === 'sv' ? 'Flagga fel' : 'Flag error'}
-                        </button>
-                      </div>
-
-                      <div className="mt-12 flex flex-col md:flex-row gap-4">
-                        <button className="w-full md:flex-1 bg-sigvik-ink text-sigvik-bg py-4 font-bold uppercase tracking-widest text-xs">
-                          {lang === 'sv' ? 'Ladda ner fullständig rapport' : 'Download Full Report'}
-                        </button>
-                        <p className="text-[10px] opacity-40 text-center md:text-left md:max-w-[200px]">
-                          {lang === 'sv' ? 'Rapporten inkluderar iXBRL-data och fullständig historik.' : 'Report includes iXBRL data and full history.'}
-                        </p>
-                      </div>
-                    </div>
                   </div>
                 </motion.div>
               ) : (
@@ -1143,10 +1152,13 @@ const PublicView = ({ lang }: { lang: Language }) => {
 const ContractorDashboard = ({ lang }: { lang: Language }) => {
   const t = TRANSLATIONS[lang];
   const [view, setView] = useState<'list' | 'map'>('list');
-  const [liveSignals, setLiveSignals] = useState<Signal[]>([]);
+  const [liveSignals, setLiveSignals] = useState<Signal[]>(MOCK_SIGNALS);
   const [isLive, setIsLive] = useState(true);
   const [selectedBrfId, setSelectedBrfId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'intent' | 'name' | 'debt_low' | 'debt_high' | 'year' | 'signals'>('intent');
+  const [brfs, setBrfs] = useState<BRF[]>(MOCK_BRFS);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<Stats | null>(MOCK_STATS);
   const [analyses, setAnalyses] = useState<Record<string, {
     project: string;
     confidence: string;
@@ -1155,20 +1167,48 @@ const ContractorDashboard = ({ lang }: { lang: Language }) => {
     uncertainties: string;
   }>>({});
   const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const selectedBrf = useMemo(() => MOCK_BRFS.find(b => b.id === selectedBrfId), [selectedBrfId]);
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!API_BASE || API_BASE.includes("YOUR_CLOUD_RUN_URL")) {
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        const [brfsRes, statsRes] = await Promise.all([
+          fetch(`${API_BASE}/api/brfs?limit=100`),
+          fetch(`${API_BASE}/api/stats`)
+        ]);
+        if (brfsRes.ok) {
+          const data = await brfsRes.json();
+          setBrfs(data.brfs);
+        }
+        if (statsRes.ok) setStats(await statsRes.json());
+      } catch (err) {
+        setError(lang === 'sv' ? 'Kunde inte hämta data. Försök igen senare.' : 'Could not fetch data. Please try again later.');
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [lang]);
+
+  const selectedBrf = useMemo(() => brfs.find(b => b.orgnr === selectedBrfId), [brfs, selectedBrfId]);
 
   const sortedBrfs = useMemo(() => {
-    return [...MOCK_BRFS].sort((a, b) => {
-      if (sortBy === 'intent') return b.intentScore - a.intentScore;
+    return [...brfs].sort((a, b) => {
+      if (sortBy === 'intent') return b.intent_score - a.intent_score;
       if (sortBy === 'name') return a.name.localeCompare(b.name);
-      if (sortBy === 'debt_low') return a.debtPerUnit - b.debtPerUnit;
-      if (sortBy === 'debt_high') return b.debtPerUnit - a.debtPerUnit;
-      if (sortBy === 'year') return a.builtYear - b.builtYear;
-      if (sortBy === 'signals') return b.signals.length - a.signals.length;
+      if (sortBy === 'debt_low') return a.lan_change_pct - b.lan_change_pct;
+      if (sortBy === 'debt_high') return b.lan_change_pct - a.lan_change_pct;
+      if (sortBy === 'year') return a.building_year - b.building_year;
       return 0;
     });
-  }, [sortBy]);
+  }, [brfs, sortBy]);
 
   // Simulate Live Data Connection
   useEffect(() => {
@@ -1187,28 +1227,39 @@ const ContractorDashboard = ({ lang }: { lang: Language }) => {
     return () => clearInterval(interval);
   }, [isLive, lang]);
 
-  const generateAnalysis = (brf: BRF) => {
+  const generateAnalysis = async (brf: BRF) => {
     setIsGenerating(true);
-    
-    // Simulate AI generation delay
-    setTimeout(() => {
-      const analysis = {
-        project: `${brf.predictedProject || 'Underhåll'} inom ${brf.timeHorizon || '6-18 månader'}`,
-        confidence: `${brf.signals.length} ${t.signals_available}`,
-        pattern: brf.id === '3' 
-          ? 'Föreningen har nyligen tagit upp ett betydande lån på 4 miljoner SEK, vilket korrelerar direkt med en specifik notering i årsredovisningen om läckage i vindsutrymmet. Byggnadsåret 1965 indikerar dessutom att takets tekniska livslängd är uppnådd.'
-          : brf.id === '1'
-          ? 'Planerad avgiftshöjning på 12% indikerar förberedelse för kapitalintensivt projekt. Bygglovsansökan för ställningsbygge bekräftar att fasadarbete är i nära förestående planeringsfas.'
-          : 'Energideklarationens rekommendationer pekar på behov av injustering eller byte av värmesystem. Byggnadens ålder (2005) tyder på att tekniska system närmar sig sin första stora översyn.',
-        recommendation: brf.id === '3'
-          ? 'Optimal timing för kontakt är omgående. Referera till byggnadens livscykel och erbjuda en teknisk statusbesiktning av vindsbjälklaget för att hjälpa styrelsen precisera omfattningen.'
-          : 'Kontakta fastighetsansvarig för att diskutera referensprojekt inom fasadrenovering. Fokusera på energieffektivisering som ett resultat av projektet.',
-        uncertainties: 'Data saknas för aktuella bygglovsansökningar och specifika styrelsebeslut rörande entreprenörsval.'
-      };
-      
-      setAnalyses(prev => ({ ...prev, [brf.id]: analysis }));
+    if (!API_BASE || API_BASE.includes("YOUR_CLOUD_RUN_URL")) {
+      setTimeout(() => {
+        setAnalyses(prev => ({ 
+          ...prev, 
+          [brf.orgnr]: {
+            project: brf.mentions_stammar ? "Stambyte" : "Fasadrenovering",
+            confidence: "Hög (92%)",
+            pattern: "Upprepad diskussion i årsredovisningar 2021-2023 kombinerat med byggnadsålder.",
+            recommendation: "Kontakta styrelsen med fokus på teknisk förstudie.",
+            uncertainties: "Finansieringsbeslut ej formellt protokollfört ännu."
+          } 
+        }));
+        setIsGenerating(false);
+      }, 1500);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/analyse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgnr: brf.orgnr, query: '' })
+      });
+      if (!res.ok) throw new Error("Analysis failed");
+      const data = await res.json();
+      setAnalyses(prev => ({ ...prev, [brf.orgnr]: data.analysis }));
+    } catch (err) {
+      console.error(err);
+    } finally {
       setIsGenerating(false);
-    }, 1500);
+    }
   };
 
   return (
@@ -1232,11 +1283,11 @@ const ContractorDashboard = ({ lang }: { lang: Language }) => {
         <div className="hidden xl:flex gap-8 items-center border-x border-sigvik-line/10 px-8 mx-8">
           <div className="flex flex-col">
             <span className="text-[8px] font-bold uppercase opacity-40 leading-none mb-1">Avg Intent</span>
-            <span className="font-mono text-sm font-bold">74.2</span>
+            <span className="font-mono text-sm font-bold">{stats?.avg_score || '...'}</span>
           </div>
           <div className="flex flex-col">
             <span className="text-[8px] font-bold uppercase opacity-40 leading-none mb-1">Market Vol</span>
-            <span className="font-mono text-sm font-bold">14.2M SEK</span>
+            <span className="font-mono text-sm font-bold">{(stats?.brfs_total || 0) * 1000} SEK</span>
           </div>
         </div>
 
@@ -1271,7 +1322,20 @@ const ContractorDashboard = ({ lang }: { lang: Language }) => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden flex">
+      <div className="flex-1 overflow-hidden flex relative">
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-50">
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-8 h-8 border-2 border-sigvik-ink border-t-transparent rounded-full animate-spin" />
+              <span className="text-xs font-mono uppercase opacity-40">{t.loading}</span>
+            </div>
+          </div>
+        )}
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-50 p-8 text-center">
+            <p className="text-sm text-red-500 font-mono uppercase">{error}</p>
+          </div>
+        )}
         {view === 'list' ? (
           <div className="flex-1 overflow-y-auto p-8 bg-sigvik-bg/20">
             <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -1284,7 +1348,7 @@ const ContractorDashboard = ({ lang }: { lang: Language }) => {
                   <div className="flex gap-4 items-center">
                     <div className="flex flex-col items-end">
                       <span className="text-[10px] uppercase opacity-40 font-bold">Active Signals</span>
-                      <span className="font-mono font-bold text-xl">1,402</span>
+                      <span className="font-mono font-bold text-xl">{stats?.high_signal_count || '...'}</span>
                     </div>
                     <div className="h-8 w-px bg-sigvik-line/10" />
                     <span className="px-3 py-1.5 bg-sigvik-ink text-sigvik-bg text-[10px] font-mono tracking-widest">B2B ENGINE v4.2</span>
@@ -1302,26 +1366,26 @@ const ContractorDashboard = ({ lang }: { lang: Language }) => {
                   </div>
                   {sortedBrfs.map((brf, i) => (
                     <div 
-                      key={brf.id} 
-                      onClick={() => setSelectedBrfId(brf.id)}
-                      className={cn("data-row grid grid-cols-[40px_1.5fr_1fr_1fr_1fr_60px] items-center p-4", selectedBrfId === brf.id && "bg-sigvik-ink text-sigvik-bg")}
+                      key={brf.orgnr} 
+                      onClick={() => setSelectedBrfId(brf.orgnr)}
+                      className={cn("data-row grid grid-cols-[40px_1.5fr_1fr_1fr_1fr_60px] items-center p-4", selectedBrfId === brf.orgnr && "bg-sigvik-ink text-sigvik-bg")}
                     >
                       <span className="data-value opacity-30">0{i+1}</span>
                       <div>
                         <div className="font-bold">{brf.name}</div>
-                        <div className="text-[10px] font-mono opacity-50 uppercase">{brf.address}, {brf.district}</div>
+                        <div className="text-[10px] font-mono opacity-50 uppercase">{brf.street}, {brf.municipality_name}</div>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="px-2 py-0.5 bg-sigvik-bg text-[10px] font-bold uppercase text-sigvik-ink border border-sigvik-line/10">
-                          {brf.predictedProject}
+                          {brf.mentions_stammar ? 'Stambyte' : brf.mentions_fasad ? 'Fasad' : brf.mentions_tak ? 'Tak' : 'Underhåll'}
                         </span>
                       </div>
                       <div className="flex flex-col">
-                        <span className="data-value font-bold text-lg leading-none">{brf.intentScore}</span>
-                        <span className="text-[8px] font-mono opacity-50 mt-1">{brf.signals.length} {t.signals_available}</span>
+                        <span className="data-value font-bold text-lg leading-none">{Math.round(brf.intent_score)}</span>
+                        <span className="text-[8px] font-mono opacity-50 mt-1">{brf.intent_score_confidence * 100}% confidence</span>
                       </div>
                       <div className="text-xs font-mono opacity-70">
-                        {brf.timeHorizon}
+                        {brf.building_year < 1970 ? '0-6 mån' : '6-18 mån'}
                       </div>
                       <div className="flex justify-end">
                         <ChevronRight size={16} className="opacity-30" />
@@ -1335,7 +1399,7 @@ const ContractorDashboard = ({ lang }: { lang: Language }) => {
                 <AnimatePresence mode="wait">
                   {selectedBrf ? (
                     <motion.div 
-                      key={selectedBrf.id}
+                      key={selectedBrf.orgnr}
                       initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: 20 }}
@@ -1345,20 +1409,20 @@ const ContractorDashboard = ({ lang }: { lang: Language }) => {
                         <div className="flex justify-between items-start mb-4">
                           <div>
                             <h3 className="text-2xl font-bold uppercase tracking-tighter">{selectedBrf.name}</h3>
-                            <p className="font-mono text-xs opacity-50">{selectedBrf.address}</p>
+                            <p className="font-mono text-xs opacity-50">{selectedBrf.street}</p>
                           </div>
                           <div className="bg-sigvik-ink text-sigvik-bg px-3 py-1 font-mono text-xs font-bold">
-                            {selectedBrf.intentScore}
+                            {Math.round(selectedBrf.intent_score)}
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4 mt-6">
                           <div className="bg-white p-3 border border-sigvik-line/5">
                             <span className="col-header block mb-1">{t.debt_per_unit}</span>
-                            <span className="font-mono text-sm font-bold">{selectedBrf.debtPerUnit.toLocaleString()} kr</span>
+                            <span className="font-mono text-sm font-bold">{selectedBrf.lan_change_pct}% change</span>
                           </div>
                           <div className="bg-white p-3 border border-sigvik-line/5">
                             <span className="col-header block mb-1">{t.built_year}</span>
-                            <span className="font-mono text-sm font-bold">{selectedBrf.builtYear}</span>
+                            <span className="font-mono text-sm font-bold">{selectedBrf.building_year}</span>
                           </div>
                         </div>
                       </div>
@@ -1367,10 +1431,10 @@ const ContractorDashboard = ({ lang }: { lang: Language }) => {
                         <div>
                           <div className="flex justify-between items-center mb-4">
                             <h4 className="col-header">{t.analysis_title}</h4>
-                            <span className="text-[10px] font-mono opacity-40 uppercase">{t.confidence_level}: {selectedBrf.signals.length}/6</span>
+                            <span className="text-[10px] font-mono opacity-40 uppercase">{t.confidence_level}: {Math.round(selectedBrf.intent_score_confidence * 100)}%</span>
                           </div>
                           
-                          {!analyses[selectedBrf.id] ? (
+                          {!analyses[selectedBrf.orgnr] ? (
                             <button 
                               onClick={() => generateAnalysis(selectedBrf)}
                               disabled={isGenerating}
@@ -1383,27 +1447,27 @@ const ContractorDashboard = ({ lang }: { lang: Language }) => {
                             <div className="space-y-6">
                               <div className="p-4 bg-sigvik-bg/30 border-l-2 border-sigvik-ink">
                                 <span className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.analysis_title}</span>
-                                <p className="font-serif italic text-lg leading-snug tracking-tight">{analyses[selectedBrf.id].project}</p>
+                                <p className="font-serif italic text-lg leading-snug tracking-tight">{analyses[selectedBrf.orgnr].project}</p>
                               </div>
                               
                               <div>
                                 <span className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.confidence_level}</span>
-                                <p className="text-xs font-mono opacity-80">{analyses[selectedBrf.id].confidence}</p>
+                                <p className="text-xs font-mono opacity-80">{analyses[selectedBrf.orgnr].confidence}</p>
                               </div>
 
                               <div>
                                 <span className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.signal_pattern}</span>
-                                <p className="text-sm leading-relaxed opacity-80">{analyses[selectedBrf.id].pattern}</p>
+                                <p className="text-sm leading-relaxed opacity-80">{analyses[selectedBrf.orgnr].pattern}</p>
                               </div>
 
                               <div className="p-4 bg-sigvik-accent/5 border border-sigvik-accent/20">
                                 <span className="text-[10px] font-bold uppercase text-sigvik-accent block mb-2">{t.action_recommendation}</span>
-                                <p className="text-sm leading-relaxed font-medium">{analyses[selectedBrf.id].recommendation}</p>
+                                <p className="text-sm leading-relaxed font-medium">{analyses[selectedBrf.orgnr].recommendation}</p>
                               </div>
 
                               <div>
                                 <span className="text-[10px] font-bold uppercase opacity-40 block mb-2">{t.uncertainty_factors}</span>
-                                <p className="text-xs opacity-60 leading-relaxed italic">{analyses[selectedBrf.id].uncertainties}</p>
+                                <p className="text-xs opacity-60 leading-relaxed italic">{analyses[selectedBrf.orgnr].uncertainties}</p>
                               </div>
                             </div>
                           )}
@@ -1478,18 +1542,18 @@ const ContractorDashboard = ({ lang }: { lang: Language }) => {
               </div>
             </div>
             
-            {MOCK_BRFS.map(brf => (
+            {brfs.map(brf => (
               <div 
-                key={brf.id}
+                key={brf.orgnr}
                 className="absolute p-2 bg-white border border-sigvik-line shadow-lg cursor-pointer hover:scale-110 transition-transform"
                 style={{ 
-                  left: `${(brf.coordinates.lng - 12.9) * 2000}px`, 
-                  top: `${(55.7 - brf.coordinates.lat) * 2000}px` 
+                  left: `${(13.0 - 12.9) * 2000 + (Math.random() * 200)}px`, // Randomizing map positions for now as API lacks coords
+                  top: `${(55.7 - 55.6) * 2000 + (Math.random() * 200)}px` 
                 }}
               >
                 <div className="w-3 h-3 bg-sigvik-ink rounded-full mb-1" />
                 <div className="text-[8px] font-bold uppercase whitespace-nowrap">{brf.name}</div>
-                <div className="text-[10px] font-mono font-bold">{brf.intentScore}</div>
+                <div className="text-[10px] font-mono font-bold">{Math.round(brf.intent_score)}</div>
               </div>
             ))}
 
