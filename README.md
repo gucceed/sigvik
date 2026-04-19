@@ -1,20 +1,71 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Sigvik
 
-# Run and deploy your AI Studio app
+Sveriges BRF-intelligens — ekonomi, avgift, energiklass och underhållsrisk för bostadsrättsföreningar.
 
-This contains everything you need to run your app locally.
+## Stack
 
-View your app in AI Studio: https://ai.studio/apps/29475a76-5f48-4da3-9fe8-80ceccf537af
+- **Next.js 14** (App Router)
+- **React 18**
+- **TypeScript** (strict)
+- **Tailwind CSS** with custom editorial Nordic design tokens
+- **Fraunces** (display + body) via `next/font/google`
+- **Vercel** deployment
 
-## Run Locally
+## Ground rules
 
-**Prerequisites:**  Node.js
+- No Inter, no Roboto, no system fonts
+- No purple gradients
+- Editorial Nordic aesthetic — paper base, deep ink, sage/amber risk palette, single deep-red accent
+- Plain Swedish throughout
+- Mobile-first (360px baseline up)
+- All user-facing copy must be plain Swedish, no untranslated jargon
 
+## Scripts
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+```bash
+npm install
+npm run dev      # localhost:3000
+npm run build    # production build
+npm run start    # run production build
+npm run typecheck
+```
+
+## Structure
+
+```
+app/
+  layout.tsx          Root layout + font loading + SEO
+  page.tsx            Homepage (address-first search)
+  globals.css         Design tokens + Tailwind layers
+  not-found.tsx       404
+  robots.ts           robots.txt
+  sitemap.ts          sitemap.xml
+  api/
+    health/route.ts   /api/health — status, commit, deployedAt
+tailwind.config.ts    Design tokens in Tailwind extend
+next.config.mjs       Production config
+```
+
+## Health check
+
+```bash
+curl https://sigvik.com/api/health
+```
+
+Returns `{status, service, commit, deployedAt, region}`.
+
+## Roadmap
+
+Sequenced in `PROMPTS.md`:
+
+- **Prompt 1** (done) — Domain, deployment, design foundation, `/api/health`
+- **Prompt 2** — Full DESIGN.md, 8 UI primitives, `/design` showcase route
+- **Prompt 3** — Address → BRF → verdict resolution (backend `/api/v1/resolve`)
+- **Prompt 4** — Verdict-first BRF page (`/brf/[slug]`)
+- **Prompt 5** — Instant paid report flow (Stripe, in-browser delivery)
+- **Prompt 6** — Skåne map with intent-score overlay (`/karta`)
+- **Prompt 7** — Contractor portal (`kontraktor.sigvik.com`)
+
+## Licence
+
+Private — property of Norric AB.
