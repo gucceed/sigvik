@@ -2,17 +2,58 @@
 
 import { useState, useRef } from 'react';
 
+const API_URL =
+  process.env.NEXT_PUBLIC_SIGVIK_API_URL ||
+  'https://sigvik-backend-production.up.railway.app';
+
+type SearchResult = {
+  orgnr: string;
+  name: string;
+  street: string | null;
+  city: string | null;
+  postal_code: string | null;
+  registration_year: number | null;
+  intent_score: number | null;
+  intent_score_confidence: number | null;
+  municipality_name: string | null;
+  kommunkod: string | null;
+};
+
+type SearchState =
+  | { phase: 'idle' }
+  | { phase: 'loading' }
+  | { phase: 'found'; results: SearchResult[] }
+  | { phase: 'empty'; query: string };
+
 export default function HomePage() {
   const [query, setQuery] = useState('');
-  const [submitted, setSubmitted] = useState(false);
+  const [state, setState] = useState<SearchState>({ phase: 'idle' });
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const submitted = state.phase === 'loading';
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!query.trim()) return;
-    setSubmitted(true);
-    // Real resolve endpoint wired in Prompt 3
-    setTimeout(() => setSubmitted(false), 3500);
+    const q = query.trim();
+    if (!q) return;
+
+    setState({ phase: 'loading' });
+    try {
+      const resp = await fetch(
+        `${API_URL}/api/brfs/search?q=${encodeURIComponent(q)}`,
+      );
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      const results: SearchResult[] = data.results ?? [];
+      if (results.length > 0) {
+        setState({ phase: 'found', results });
+      } else {
+        setState({ phase: 'empty', query: q });
+      }
+    } catch (err) {
+      console.error('Search failed:', err);
+      setState({ phase: 'empty', query: q });
+    }
   };
 
   return (
@@ -47,7 +88,7 @@ export default function HomePage() {
         <div className="w-full max-w-3xl">
           <div className="reveal reveal-delay-1">
             <span className="text-overline text-ink-muted uppercase block mb-6">
-              Hela Sveriges BRF-register · uppdaterat dagligen
+              Skåne först · 3&nbsp;582 föreningar · uppdaterat dagligen
             </span>
           </div>
 
@@ -60,10 +101,10 @@ export default function HomePage() {
           </h1>
 
           <p className="reveal reveal-delay-3 text-body-lg text-ink-soft max-w-prose mb-10 md:mb-14 leading-relaxed">
-            Skriv in en adress var som helst i Sverige. Få ekonomi, årsavgift,
-            energiklass och underhållsrisk för bostadsrättsföreningen — på
-            under en sekund. Underlaget kommer direkt från Bolagsverket och
-            Boverket.
+            Skriv in en adress, föreningsnamn eller organisationsnummer i Skåne.
+            Få ekonomi, årsavgift, energiklass och underhållsrisk för
+            bostadsrättsföreningen — på under en sekund. Underlaget kommer
+            direkt från Bolagsverket och Boverket.
           </p>
 
           {/* Search */}
@@ -83,7 +124,7 @@ export default function HomePage() {
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Bondegatan 42, Stockholm"
+                placeholder="Ängelholmsgatan 12, Malmö"
                 autoComplete="street-address"
                 autoCapitalize="off"
                 spellCheck="false"
@@ -106,18 +147,59 @@ export default function HomePage() {
             </p>
           </form>
 
-          {submitted && (
+          {state.phase === 'loading' && (
+            <div className="reveal mt-8 text-body-sm text-ink-muted">
+              Söker i Bolagsverkets värdefulla datamängder…
+            </div>
+          )}
+
+          {state.phase === 'found' && (
+            <div className="reveal mt-8 space-y-4">
+              {state.results.map((r) => (
+                <a
+                  key={r.orgnr}
+                  href={`/brf/${r.orgnr}`}
+                  className="block border border-rule bg-paper/60 backdrop-blur p-5 md:p-6 hover:border-accent transition-colors"
+                >
+                  <div className="flex items-baseline justify-between gap-4 mb-2">
+                    <h3 className="font-display text-display-sm font-normal text-ink">
+                      {r.name}
+                    </h3>
+                    <span className="text-overline uppercase text-ink-muted whitespace-nowrap">
+                      {r.municipality_name}
+                    </span>
+                  </div>
+                  <p className="text-body text-ink-soft">
+                    {[r.street, r.postal_code, r.city].filter(Boolean).join(' · ')}
+                  </p>
+                  <div className="flex flex-wrap gap-4 mt-4 text-body-sm text-ink-muted">
+                    <span>Org.nr {r.orgnr}</span>
+                    {r.registration_year && <span>Reg. {r.registration_year}</span>}
+                    {r.intent_score !== null && (
+                      <span>Intent-score {r.intent_score.toFixed(1)}</span>
+                    )}
+                  </div>
+                </a>
+              ))}
+              <p className="text-body-sm text-ink-muted pt-2">
+                {state.results.length} träff{state.results.length === 1 ? '' : 'ar'} · Data från Bolagsverket
+              </p>
+            </div>
+          )}
+
+          {state.phase === 'empty' && (
             <div className="reveal mt-8 border border-rule bg-paper/60 backdrop-blur p-5 md:p-6">
               <p className="text-body text-ink-soft leading-relaxed">
                 <span className="font-semibold text-ink">
-                  Söker i hela Sveriges BRF-register.
+                  Sigvik täcker idag Skåne — 3&nbsp;582 föreningar.
                 </span>{' '}
-                Cirka 45&nbsp;000 föreningar — från Kiruna till Ystad. Hittar vi
-                inte din förening direkt, lämna din e-post så hör vi av oss inom
-                24 timmar.
+                Vi hittade ingen förening som matchar{' '}
+                <em>&ldquo;{state.query}&rdquo;</em>. Om din förening ligger
+                utanför Skåne, lämna din e-post så hör vi av oss när vi kommer
+                till din stad.
               </p>
               <a
-                href="mailto:hej@sigvik.com?subject=Hittade inte min förening&body=Hej, jag letade efter följande förening: "
+                href={`mailto:hej@sigvik.com?subject=V%C3%A4ntelista%20f%C3%B6r%20min%20stad&body=Hej%2C%20jag%20letade%20efter%3A%20${encodeURIComponent(state.query)}`}
                 className="inline-block mt-4 text-body-sm text-accent hover:text-accent-hover underline underline-offset-4 decoration-1"
               >
                 hej@sigvik.com →
@@ -189,7 +271,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* National coverage */}
+      {/* Coverage — Skåne first, national roadmap */}
       <section className="px-6 md:px-12 py-16 md:py-24 border-t border-rule">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
@@ -198,31 +280,31 @@ export default function HomePage() {
                 Täckning
               </span>
               <h3 className="font-display text-display-md font-normal tracking-tight mb-6">
-                Hela Sverige. Från första dagen.
+                Skåne först. Sverige härnäst.
               </h3>
               <p className="text-body-lg text-ink-soft leading-relaxed max-w-prose">
-                Ingen region är prioriterad. Ingen kommun väntar. Från Kiruna
-                till Ystad — varje registrerad bostadsrättsförening i Sverige
-                finns i Sigvik.
+                Vi började där vi bor. Skåne är idag Sigviks mest kompletta
+                täckning — varje registrerad bostadsrättsförening, uppdaterad
+                dagligen. Stockholm och Göteborg är nästa på vägkartan.
               </p>
             </div>
             <div className="md:col-span-6 md:col-start-7">
               <dl className="space-y-5">
                 <CoverageRow
-                  metric="~45 000"
-                  label="föreningar i registret"
-                  source="Bolagsverket"
+                  metric="3 582"
+                  label="föreningar i Skåne"
+                  source="Bolagsverket · komplett"
                 />
                 <div className="rule-dashed" />
                 <CoverageRow
-                  metric="290"
+                  metric="9"
                   label="kommuner täckta"
-                  source="hela Sverige"
+                  source="Malmö, Lund, Helsingborg m.fl."
                 />
                 <div className="rule-dashed" />
                 <CoverageRow
                   metric="Dagligen"
-                  label="nya årsredovisningar inlästa"
+                  label="uppdatering från Bolagsverket"
                   source="automatisk ingestion"
                 />
                 <div className="rule-dashed" />
