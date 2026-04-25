@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { DataCompletenessBar } from './components/DataCompletenessBar';
 
 const API_URL =
   process.env.NEXT_PUBLIC_SIGVIK_API_URL ||
@@ -17,6 +18,12 @@ type SearchResult = {
   intent_score_confidence: number | null;
   municipality_name: string | null;
   kommunkod: string | null;
+  is_active_scb: boolean | null;
+  is_deregistered: boolean | null;
+  is_winding_up: boolean | null;
+  docs_fetched: number | null;
+  building_year: number | null;
+  energy_class: string | null;
 };
 
 type SearchState =
@@ -178,6 +185,7 @@ export default function HomePage() {
                     {r.intent_score !== null && (
                       <span>Intent-score {r.intent_score.toFixed(1)}</span>
                     )}
+                    <DataCompletenessBar brf={r} />
                   </div>
                 </a>
               ))}
