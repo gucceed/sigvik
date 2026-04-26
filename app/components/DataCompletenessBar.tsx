@@ -7,18 +7,18 @@ interface Signal {
 
 interface Props {
   brf: {
-    is_active_scb: boolean | null;
-    is_deregistered: boolean | null;
-    is_winding_up: boolean | null;
-    docs_fetched: number | null;
-    building_year?: number | null;
-    energy_class?: string | null;
+    is_active_scb: boolean | null | undefined;
+    is_deregistered: boolean | null | undefined;
+    is_winding_up: boolean | null | undefined;
+    docs_fetched: number | null | undefined;
+    building_year?: number | null | undefined;
+    energy_class?: string | null | undefined;
   };
 }
 
 export function DataCompletenessBar({ brf }: Props) {
   const signals: Signal[] = [
-    { key: "registration", label: "Registrering", present: !brf.is_deregistered, source: "Bolagsverket" },
+    { key: "registration", label: "Registrering", present: brf.is_deregistered === false, source: "Bolagsverket" },
     { key: "scb_active", label: "SCB-status", present: !!brf.is_active_scb, source: "SCB" },
     { key: "building_year", label: "Byggår", present: !!brf.building_year, source: "Bolagsverket" },
     { key: "energy_class", label: "Energiklass", present: !!brf.energy_class, source: "Boverket / prediktion" },

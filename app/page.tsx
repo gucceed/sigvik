@@ -18,12 +18,12 @@ type SearchResult = {
   intent_score_confidence: number | null;
   municipality_name: string | null;
   kommunkod: string | null;
-  is_active_scb: boolean | null;
-  is_deregistered: boolean | null;
-  is_winding_up: boolean | null;
-  docs_fetched: number | null;
-  building_year: number | null;
-  energy_class: string | null;
+  is_active_scb: boolean | null | undefined;
+  is_deregistered: boolean | null | undefined;
+  is_winding_up: boolean | null | undefined;
+  docs_fetched: number | null | undefined;
+  building_year: number | null | undefined;
+  energy_class: string | null | undefined;
 };
 
 type SearchState =
@@ -182,7 +182,7 @@ export default function HomePage() {
                   <div className="flex flex-wrap gap-4 mt-4 text-body-sm text-ink-muted">
                     <span>Org.nr {r.orgnr}</span>
                     {r.registration_year && <span>Reg. {r.registration_year}</span>}
-                    {r.intent_score !== null && (
+                    {r.intent_score != null && (
                       <span>Intent-score {r.intent_score.toFixed(1)}</span>
                     )}
                     <DataCompletenessBar brf={r} />
