@@ -185,8 +185,8 @@ export default function HomePage() {
                     {r.intent_score != null && (
                       <span>Intent-score {r.intent_score.toFixed(1)}</span>
                     )}
-                    <DataCompletenessBar brf={r} />
                   </div>
+                  <DataCompletenessBar brf={r} />
                 </a>
               ))}
               <p className="text-body-sm text-ink-muted pt-2">
