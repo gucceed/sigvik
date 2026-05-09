@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Fraunces, JetBrains_Mono } from 'next/font/google';
+import { Fraunces, Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 
 const fraunces = Fraunces({
@@ -7,6 +7,13 @@ const fraunces = Fraunces({
   variable: '--font-display',
   display: 'swap',
   axes: ['opsz', 'SOFT', 'WONK'],
+});
+
+const inter = Inter({
+  subsets: ['latin', 'latin-ext'],
+  variable: '--font-sans',
+  display: 'swap',
+  weight: ['400', '500'],
 });
 
 const jetbrainsMono = JetBrains_Mono({
@@ -70,7 +77,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="sv" className={`${fraunces.variable} ${jetbrainsMono.variable}`}>
+    <html lang="sv" className={`${fraunces.variable} ${inter.variable} ${jetbrainsMono.variable}`}>
       <body>{children}</body>
     </html>
   );

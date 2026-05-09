@@ -39,7 +39,7 @@ export function DataCompletenessBar({ brf }: Props) {
           className="h-full rounded-full transition-all duration-500"
           style={{
             width: `${pct}%`,
-            backgroundColor: pct >= 80 ? "#16a34a" : pct >= 50 ? "#ca8a04" : "#dc2626",
+            backgroundColor: pct >= 80 ? "#5F7A5F" : pct >= 50 ? "#C08B3C" : "#B04040",
           }}
         />
       </div>

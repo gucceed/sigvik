@@ -18,8 +18,19 @@ const config: Config = {
         signal: '#B04040',
       },
       fontFamily: {
+        // ── Brand / editorial ──────────────────────────────────────────
+        // Fraunces: hero text, page titles, section headings, BRF names,
+        // verdict numbers, editorial body copy.
         display: ['var(--font-display)', 'Georgia', 'serif'],
-        body: ['var(--font-body)', 'Georgia', 'serif'],
+        body:    ['var(--font-display)', 'Georgia', 'serif'],  // same as display intentionally
+
+        // ── Dense UI ───────────────────────────────────────────────────
+        // Inter: nav, footer, overlines, filter panels, table rows,
+        // form labels, result metadata, any text below 14px (caption/overline).
+        sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
+
+        // ── Data / code ────────────────────────────────────────────────
+        // JetBrains Mono: orgnr, postcode, git SHA, numeric data tables.
         mono: ['var(--font-mono)', 'ui-monospace', 'monospace'],
       },
       fontSize: {
