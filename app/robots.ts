@@ -6,9 +6,12 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: '*',
         allow: '/',
-        disallow: ['/api/', '/design'],
+        disallow: ['/api/', '/admin', '/design'],
       },
     ],
-    sitemap: 'https://sigvik.com/sitemap.xml',
+    sitemap: [
+      'https://sigvik.com/sitemap.xml',      // static pages
+      'https://sigvik.com/brf-sitemap.xml',  // 33 706 BRF pages
+    ],
   };
 }
