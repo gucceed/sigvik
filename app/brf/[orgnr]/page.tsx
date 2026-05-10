@@ -872,7 +872,14 @@ function RapportView({
       </div>
 
       {/* 3. Grade + score bar */}
-      {gradeResult.grade && gradeResult.confidence !== 'insufficient' && (
+      {gradeResult.confidence === 'insufficient' || !gradeResult.grade ? (
+        <div className="mb-8 p-4" style={{ borderLeft: '2px solid #C08B3C', backgroundColor: 'rgba(192,139,60,0.06)' }}>
+          <p className="font-sans text-body-sm leading-relaxed" style={{ color: '#7A5A20' }}>
+            Ekonomisk hälsa kan inte beräknas — årsredovisningar är ännu inte inlästa för
+            denna förening. Kontrollera direkt hos Bolagsverket.
+          </p>
+        </div>
+      ) : (
         <div className="mb-8 p-5 border border-rule">
           <div className="flex items-center gap-3 mb-3">
             <GradeChip grade={gradeResult.grade} size="lg" />
