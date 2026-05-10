@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { SwedenChoropleth } from '../components/SwedenChoropleth';
+import coverageData from './coverage-data.json';
 
 const API_URL =
   process.env.NEXT_PUBLIC_SIGVIK_API_URL ||
@@ -88,6 +90,75 @@ export default async function SwedenPage() {
             <p>
               Det är inte en prognos. Det är vad som finns i registret idag.
             </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Panel 1b: Choropleth map ─────────────────────────────────────── */}
+      <section className="px-6 md:px-12 pb-20 md:pb-28 border-b border-rule">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_340px] gap-10 md:gap-16 items-start">
+
+            {/* Map */}
+            <div>
+              <SwedenChoropleth coverage={coverageData as Record<string, { brf_count: number; with_ars: number; name: string; county: string }>} />
+            </div>
+
+            {/* Explanation */}
+            <div className="md:pt-2">
+              <span className="font-sans text-overline text-ink-muted uppercase block mb-5">
+                Täckning per kommun
+              </span>
+              <h2 className="font-display text-display-sm font-normal tracking-tight text-ink mb-6">
+                Mörkare = fler föreningar.
+              </h2>
+              <div className="space-y-4 font-sans text-body-sm text-ink-soft leading-relaxed">
+                <p>
+                  Kartan visar antal registrerade föreningar per kommun i logaritmisk skala.
+                  Stockholm (6 034), Göteborg (1 812) och Malmö (1 270) dominerar.
+                </p>
+                <p>
+                  Klicka på valfri kommun för att se föreningarna.
+                </p>
+              </div>
+
+              {/* Top municipalities */}
+              <div className="mt-8">
+                <span className="font-sans text-overline text-ink-muted uppercase block mb-3">
+                  Flest föreningar
+                </span>
+                <ol className="space-y-0">
+                  {Object.entries(coverageData as Record<string, { brf_count: number; name: string; county: string }>)
+                    .sort((a, b) => b[1].brf_count - a[1].brf_count)
+                    .slice(0, 8)
+                    .map(([kod, entry], i) => (
+                      <li key={kod}>
+                        <a
+                          href={`/region/${kod}`}
+                          className="flex items-baseline justify-between py-2.5 border-b border-rule-soft hover:border-ink group transition-colors"
+                        >
+                          <div className="flex items-baseline gap-3">
+                            <span className="font-mono text-caption text-ink-muted w-5">{i + 1}</span>
+                            <span className="font-sans text-body-sm text-ink group-hover:text-accent transition-colors">
+                              {entry.name}
+                            </span>
+                          </div>
+                          <span className="font-mono text-caption text-ink-muted tabular-nums">
+                            {entry.brf_count.toLocaleString('sv-SE')}
+                          </span>
+                        </a>
+                      </li>
+                    ))
+                  }
+                </ol>
+                <a
+                  href="/search"
+                  className="font-sans text-body-sm text-ink-muted hover:text-ink underline underline-offset-4 decoration-1 transition-colors mt-4 inline-block"
+                >
+                  Sök bland alla kommuner →
+                </a>
+              </div>
+            </div>
           </div>
         </div>
       </section>
