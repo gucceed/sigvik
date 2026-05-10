@@ -7,6 +7,21 @@
     --font-display: 'Fraunces', Georgia, serif;
     --font-sans:    'Inter', system-ui, sans-serif;
     --font-mono:    'JetBrains Mono', ui-monospace, monospace;
+
+    /* ── Economic health grade palette ─────────────────────────────── */
+    --grade-a: #2D5A3D;
+    --grade-b: #3D6B4F;
+    --grade-c: #C08B3C;
+    --grade-d: #B04040;
+    --grade-e: #8B2E2E;
+    --grade-f: #5C1A1A;
+    --grade-unknown: #9A8F85;
+
+    /* ── Surface tokens ─────────────────────────────────────────────── */
+    --surface-card:  #EFEBE3;
+    --surface-hover: #E8E3DA;
+    --border-subtle: rgba(26,26,26,0.08);
+    --border-medium: rgba(26,26,26,0.16);
   }
 
   html {

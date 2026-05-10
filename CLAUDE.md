@@ -29,25 +29,38 @@ Contractor surface (Prompt 7): `kontraktor.sigvik.com` — lead discovery for st
 ## Current STATUS
 
 ```
-Last updated: 2026-04-19
+Last updated: 2026-05-10
 
 ✅ WORKING
 - Next.js 14 App Router scaffold deployed to Vercel
-- sigvik.com serves real frontend (Google AI Studio placeholder replaced)
+- sigvik.com serves real frontend
 - /api/health endpoint returns {status, commit, deployedAt, region}
-- Editorial Nordic design system base (Fraunces serif, paper/ink palette, no Inter, no purple)
-- Mobile-first homepage with address search input
+- Editorial Nordic design system (Fraunces + Inter + JetBrains Mono, paper/ink palette)
+- Mobile-first homepage with address search, national launch strip, persona entry cards
 - Proper SEO (OG tags, sitemap, robots, Swedish lang)
+- Component library: GradeChip, ScoreBar, UncertaintyNote, SourceBadge, TrendArrow,
+  SignalRow, DataPoint, ProgressRing, AvgiftChart, LaunchStrip
+- BRF detail page /brf/[orgnr]:
+    - Ink header with GradeChip (A–F derived from financial data)
+    - ScoreBar with confidence indicator and UncertaintyNote gating
+    - Key metrics 2×2 grid (avgift/kvm, skuld/lgh, underhållsfond/lgh, energiklass)
+    - Avgift trend line chart (Recharts, dynamically imported)
+    - Underhållssignaler with SignalRow + lifecycle fallback
+    - Persona blocks: buyer/agent/contractor
+    - Rapport view (?view=rapport) — print-optimised PDF layout
+    - Data sources collapsible
+    - Three CTAs (köparrapport, dela, bevaka)
+- National coverage: 33 706 BRFs, 289 municipalities
+- recharts installed for trend chart
 
 🟡 IN PROGRESS
-- Backend /api/v1/resolve endpoint for address → BRF matching (Prompt 3)
-- DESIGN.md formal spec with 8 UI primitives (Prompt 2)
+- Backend /api/v1/resolve endpoint wiring
+- Search page sidebar layout (filter panel + map toggle)
 
 ⏸ UPCOMING
-- BRF detail page /brf/[slug] with verdict grade (Prompt 4)
-- Stripe-powered paid report flow (Prompt 5)
-- Skåne/national map at /karta (Prompt 6)
-- Contractor portal at kontraktor.sigvik.com (Prompt 7)
+- /sweden municipal health map (react-simple-maps)
+- Stripe-powered paid report flow
+- Contractor portal at kontraktor.sigvik.com
 ```
 
 ---
