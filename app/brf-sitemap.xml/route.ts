@@ -16,24 +16,43 @@ const API_URL =
 const BASE = 'https://sigvik.com';
 const PAGE_SIZE = 200;
 
-async function getAllOrgnrs(): Promise<string[]> {
-  const orgnrs: string[] = [];
-  let offset = 0;
+interface BrfsPage {
+  brfs: { orgnr: string }[];
+  total?: number;
+}
 
-  while (true) {
-    try {
-      const res = await fetch(
-        `${API_URL}/api/brfs?limit=${PAGE_SIZE}&offset=${offset}&order_by=name`,
-        { next: { revalidate: 21600 } },
-      );
-      if (!res.ok) break;
-      const data = await res.json();
-      const brfs: { orgnr: string }[] = data.brfs ?? [];
-      orgnrs.push(...brfs.map((b) => b.orgnr));
-      if (brfs.length < PAGE_SIZE) break;
-      offset += PAGE_SIZE;
-    } catch {
-      break;
+async function fetchPage(offset: number): Promise<BrfsPage | null> {
+  try {
+    const res = await fetch(
+      `${API_URL}/api/brfs?limit=${PAGE_SIZE}&offset=${offset}&order_by=name`,
+      { next: { revalidate: 21600 } },
+    );
+    if (!res.ok) return null;
+    return (await res.json()) as BrfsPage;
+  } catch {
+    return null;
+  }
+}
+
+// Fetched in parallel batches: the route is prerendered at build time (ISR),
+// and ~170 sequential round-trips blow the 60s static-generation timeout.
+async function getAllOrgnrs(): Promise<string[]> {
+  const first = await fetchPage(0);
+  if (!first) return [];
+
+  const orgnrs: string[] = first.brfs.map((b) => b.orgnr);
+  const total = first.total ?? first.brfs.length;
+
+  const offsets: number[] = [];
+  for (let offset = PAGE_SIZE; offset < total; offset += PAGE_SIZE) {
+    offsets.push(offset);
+  }
+
+  const CONCURRENCY = 10;
+  for (let i = 0; i < offsets.length; i += CONCURRENCY) {
+    const pages = await Promise.all(offsets.slice(i, i + CONCURRENCY).map(fetchPage));
+    for (const page of pages) {
+      if (page) orgnrs.push(...page.brfs.map((b) => b.orgnr));
     }
   }
 
@@ -59,4 +78,5 @@ export async function GET() {
     },
   });
 }
+
 
