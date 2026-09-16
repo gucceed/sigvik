@@ -3,10 +3,11 @@
  *
  * Served at /brf-sitemap.xml and referenced from robots.txt.
  * Generated on-demand (not at build time) to avoid blocking builds.
- * Cached by Vercel edge for 24h via Cache-Control header.
+ * ISR-cached for 6h: the full ~170-page API sweep only re-runs on
+ * revalidation, so crawlers no longer trigger ~170 API calls per sitemap hit.
  */
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 21600; // 6h — BRF data changes on nightly ingestion
 
 const API_URL =
   process.env.NEXT_PUBLIC_SIGVIK_API_URL ||
@@ -23,7 +24,7 @@ async function getAllOrgnrs(): Promise<string[]> {
     try {
       const res = await fetch(
         `${API_URL}/api/brfs?limit=${PAGE_SIZE}&offset=${offset}&order_by=name`,
-        { cache: 'no-store' },
+        { next: { revalidate: 21600 } },
       );
       if (!res.ok) break;
       const data = await res.json();
@@ -58,3 +59,4 @@ export async function GET() {
     },
   });
 }
+
